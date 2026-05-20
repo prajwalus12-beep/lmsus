@@ -1,0 +1,274 @@
+// This is your Prisma schema file
+// Leave Management System - Extended Schema (Rules 42-50)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id              String                  @id @default(cuid())
+  name            String
+  email           String                  @unique
+  role            String                  @default("EMPLOYEE") // ADMIN, MANAGER, EMPLOYEE
+  password        String                  @default("")
+  departmentId    String?
+  department      Department?             @relation(fields: [departmentId], references: [id])
+  joinDate        DateTime                @default(now())
+  daysWorked      Int                     @default(0)
+  status          String                  @default("ACTIVE") // ACTIVE, RESIGNED, NOTICE_PERIOD
+  balances        LeaveBalance?
+  requests        LeaveRequest[]
+  adjustments     LeaveBalanceAdjustment[]
+  negativeLeaves  NegativeLeaveTracking[]
+  compOffEntries  CompOffWorkEntry[]
+  auditLogs       AuditLog[]
+  lastWorkingDay  DateTime?
+  communicationEmail String                  @default("sandeepjain200019@gmail.com")
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+}
+
+model LeaveBalance {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year            Int      @default(2026)
+  // Opening Balances (manual entry for first year / system-calculated after)
+  openingPl       Float    @default(0)
+  openingCl       Float    @default(0)
+  openingComp     Float    @default(0)
+  // Current Working Balances
+  pl              Float    @default(0) // Privilege Leave
+  cl              Float    @default(0) // Casual Leave
+  sl              Float    @default(0) // Sick Leave
+  comp            Float    @default(0) // Compensatory Off
+  lop             Float    @default(0) // Loss of Pay
+  mat             Float    @default(0) // Maternity/Paternity
+  // Accrued / Used tracking
+  plAccrued       Float    @default(0)
+  plUsed          Float    @default(0)
+  clUsed          Float    @default(0)
+  slUsed          Float    @default(0)
+  // Carry Forward
+  plCarryForward  Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model LeaveRequest {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String   // PL, CL, SL, COMP, LOP, MAT
+  startDate      DateTime
+  endDate        DateTime
+  halfDay        String   @default("NONE") // NONE, FIRST_HALF, SECOND_HALF
+  reason         String
+  status         String   @default("PENDING") // PENDING, L1_APPROVED, HR_APPROVED, REJECTED, CANCELLED
+  isNegative     Boolean  @default(false)    // Rule 44: negative balance leave
+  negativeAmount Float    @default(0)        // How many days went negative
+  attachmentUrl  String?
+  year           Int      @default(2026)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Holiday {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  name        String
+  type        String   @default("FIXED") // FIXED, FLOATING
+  location    String?  // null means all locations
+  isOptional  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Rule 28: Weekend Configuration
+model WeekendConfig {
+  id             String   @id @default(cuid())
+  location       String   @default("Global")
+  saturdayConfig String   @default("OFF") // OFF, WORKING, HALF_DAY, SECOND_FOURTH_OFF
+  sundayConfig   String   @default("OFF") // OFF, WORKING
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Rule 30, 31: Comp-Off Entry
+model CompOffWorkEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateWorked  DateTime
+  hoursWorked Float
+  reason      String
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED, EXPIRED, USED
+  expiryDate  DateTime?
+  daysCredited Float   @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Rule 39: Policy Configurability
+model SystemConfig {
+  id                  String   @id @default(cuid())
+  key                 String   @unique
+  value               String
+  description         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// Rule 43: Year-End Freeze
+model LeaveYearClosure {
+  id          String   @id @default(cuid())
+  year        Int      @unique
+  closedAt    DateTime @default(now())
+  closedBy    String   // User ID of admin who closed it
+  status      String   @default("CLOSED") // OPEN, CLOSED
+  remarks     String?
+  carryForwardProcessed Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Rule 48: Manual Adjustment Rules
+model LeaveBalanceAdjustment {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveType      String   // PL, CL, SL, COMP
+  amount         Float    // Positive or negative adjustment
+  adjustmentType String   // POSITIVE, NEGATIVE, CARRY_FORWARD_CORRECTION, MIGRATION, AUDIT
+  reason         String
+  effectiveYear  Int
+  enteredBy      String   // Admin user ID
+  enteredByName  String
+  remarks        String?
+  createdAt      DateTime @default(now())
+}
+
+// Rule 44/45: Negative Leave Tracking
+model NegativeLeaveTracking {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveRequestId  String?
+  leaveType       String
+  negativeDays    Float
+  dailySalary     Float    @default(0)
+  recoveryAmount  Float    @default(0)
+  status          String   @default("PENDING") // PENDING, RECOVERED, WRITTEN_OFF
+  recoveredAt     DateTime?
+  remarks         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Rule 42: Test Mode / System Date Override
+model SystemDateOverride {
+  id          String   @id @default(cuid())
+  isTestMode  Boolean  @default(false)
+  overrideDate DateTime?
+  changedBy   String
+  changedByName String
+  oldDate     DateTime?
+  newDate     DateTime?
+  reason      String?
+  createdAt   DateTime @default(now())
+}
+
+// Rule 47: Carry Forward History
+model CarryForwardHistory {
+  id              String   @id @default(cuid())
+  userId          String
+  fromYear        Int
+  toYear          Int
+  leaveType       String
+  carryForwardDays Float
+  expiredDays     Float    @default(0)
+  maxCarryLimit   Float    @default(30)
+  processedAt     DateTime @default(now())
+  processedBy     String
+}
+
+// General Audit Logs
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String   // LEAVE_APPLIED, LEAVE_APPROVED, YEAR_CLOSED, ADJUSTMENT_MADE, TEST_MODE_ENABLED, etc.
+  entity      String   // LeaveRequest, LeaveBalance, etc.
+  entityId    String?
+  oldValue    String?
+  newValue    String?
+  metadata    String?  // JSON string for extra info
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
+// --- SEED TABLES (Rule: Demo Reset) ---
+model SeedDepartment {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model SeedUser {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  role            String
+  password        String
+  departmentId    String?
+  joinDate        DateTime
+  status          String
+  communicationEmail String
+  createdAt       DateTime @default(now())
+}
+
+model SeedLeaveBalance {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  year            Int
+  openingPl       Float
+  openingCl       Float
+  openingComp     Float
+  pl              Float
+  cl              Float
+  sl              Float
+  comp            Float
+  plAccrued       Float
+  plUsed          Float
+  clUsed          Float
+  slUsed          Float
+  createdAt       DateTime @default(now())
+}
+
+model SeedHoliday {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  name        String
+  type        String
+  createdAt   DateTime @default(now())
+}
+
+model SeedSystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  createdAt   DateTime @default(now())
+}
