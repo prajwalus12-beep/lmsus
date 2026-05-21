@@ -1,10 +1,10 @@
 "use server"
 
-import { PrismaClient } from "@prisma/client"
+import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import bcrypt from "bcryptjs"
-
-const prisma = new PrismaClient()
+import { getServerSession } from "next-auth/next"
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 
 export type CsvEmployeeRow = {
   name: string
@@ -55,7 +55,7 @@ export async function importEmployees(rows: CsvEmployeeRow[]) {
     await prisma.leaveBalance.create({
       data: {
         userId: user.id,
-        year: 2026,
+        year: new Date().getFullYear(),
         pl: 0,
         cl: 0,
         sl: 0,
@@ -73,15 +73,69 @@ export async function importEmployees(rows: CsvEmployeeRow[]) {
   return { success: true, count: importedCount }
 }
 
-export async function updateEmployee(id: string, data: { name: string, role: string, lastWorkingDay?: string | null }) {
+export async function updateEmployee(
+  id: string,
+  data: {
+    name: string
+    role: string
+    status?: string
+    lastWorkingDay?: string | null
+    probationEndDate?: string | null
+  }
+) {
   await prisma.user.update({
     where: { id },
-    data: { 
-      name: data.name, 
+    data: {
+      name: data.name,
       role: data.role,
-      lastWorkingDay: data.lastWorkingDay ? new Date(data.lastWorkingDay) : null
-    }
+      status: data.status,
+      lastWorkingDay: data.lastWorkingDay ? new Date(data.lastWorkingDay) : null,
+      probationEndDate: data.probationEndDate ? new Date(data.probationEndDate) : null,
+    },
   })
+  revalidatePath("/team")
+  return { success: true }
+}
+
+export async function saveProratedBalances(
+  userId: string,
+  balances: { pl: number; cl: number; sl: number }
+) {
+  const session = await getServerSession(authOptions)
+  if (!session) throw new Error("Unauthorized")
+  const adminUser = session.user as any
+
+  const existingBalance = await prisma.leaveBalance.findUnique({ where: { userId } })
+  if (!existingBalance) throw new Error("No leave balance found for this user")
+
+  await prisma.leaveBalance.update({
+    where: { userId },
+    data: {
+      pl: balances.pl,
+      cl: balances.cl,
+      sl: balances.sl,
+      openingPl: balances.pl,
+      openingCl: balances.cl,
+    },
+  })
+
+  // Log the adjustment in AuditLog
+  await prisma.auditLog.create({
+    data: {
+      userId: adminUser.id,
+      action: "PRORATE_LEAVE_ADJUSTMENT",
+      entity: "LeaveBalance",
+      entityId: userId,
+      newValue: JSON.stringify(balances),
+      metadata: JSON.stringify({
+        adminName: adminUser.name,
+        pl: balances.pl,
+        cl: balances.cl,
+        sl: balances.sl,
+      }),
+    },
+  })
+
   revalidatePath("/team")
   return { success: true }
 }

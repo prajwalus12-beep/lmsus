@@ -23,11 +23,13 @@ const navItems = [
   { name: "My Portal", href: "/portal", icon: BriefcaseBusiness },
   { name: "Leave Ledger", href: "/ledger", icon: BookOpen },
   { name: "Requests", href: "/requests", icon: FileText },
+  { name: "Leave Register", href: "/requests/register", icon: BookOpen },
   { name: "Calendar", href: "/calendar", icon: CalendarDays },
   { name: "Holidays", href: "/holidays", icon: CalendarDays },
   { name: "Team Directory", href: "/team", icon: Users },
   { name: "Profile", href: "/profile", icon: User },
   { name: "Reports", href: "/reports", icon: FileText },
+  { name: "Opening Balances", href: "/settings/balances", icon: Settings },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -43,7 +45,9 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
   const role = (session?.user as any)?.role || "EMPLOYEE";
   
   let visibleNavItems = navItems;
-  if (role === "MANAGER") {
+  if (role === "ADMIN") {
+    visibleNavItems = navItems.filter(item => !["My Portal"].includes(item.name));
+  } else if (role === "MANAGER") {
     visibleNavItems = navItems.filter(item => ["Dashboard", "My Portal", "Leave Ledger", "Requests", "Calendar", "Holidays", "Team Directory", "Profile"].includes(item.name));
   } else if (role === "EMPLOYEE") {
     visibleNavItems = navItems.filter(item => ["My Portal", "Leave Ledger", "Calendar", "Team Directory", "Profile"].includes(item.name));

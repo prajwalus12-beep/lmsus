@@ -12,15 +12,18 @@ import { updateEmployee } from "./actions"
 export function EditEmployeeDialog({ user, open, onOpenChange }: { user: any, open: boolean, onOpenChange: (open: boolean) => void }) {
   const [role, setRole] = useState(user?.role || "EMPLOYEE")
   const [name, setName] = useState(user?.name || "")
+  const [status, setStatus] = useState(user?.status || "ACTIVE")
   const [lwd, setLwd] = useState(user?.lastWorkingDay ? new Date(user.lastWorkingDay).toISOString().split('T')[0] : "")
+  const [probationEndDate, setProbationEndDate] = useState(user?.probationEndDate || "")
   const [loading, setLoading] = useState(false)
 
-  // Use an effect to reset state when the user changes
   useEffect(() => {
     if (user) {
       setName(user.name)
       setRole(user.role)
+      setStatus(user.status || "ACTIVE")
       setLwd(user.lastWorkingDay ? new Date(user.lastWorkingDay).toISOString().split('T')[0] : "")
+      setProbationEndDate(user.probationEndDate || "")
     }
   }, [user])
 
@@ -29,7 +32,13 @@ export function EditEmployeeDialog({ user, open, onOpenChange }: { user: any, op
   const handleSave = async () => {
     setLoading(true)
     try {
-      const res = await updateEmployee(user.id, { name, role, lastWorkingDay: lwd })
+      const res = await updateEmployee(user.id, {
+        name,
+        role,
+        status,
+        lastWorkingDay: lwd || null,
+        probationEndDate: probationEndDate || null,
+      })
       if (res.success) {
         toast.success("Employee updated successfully")
         onOpenChange(false)
@@ -45,7 +54,7 @@ export function EditEmployeeDialog({ user, open, onOpenChange }: { user: any, op
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Edit Employee: {user.email}</DialogTitle>
         </DialogHeader>
@@ -54,18 +63,38 @@ export function EditEmployeeDialog({ user, open, onOpenChange }: { user: any, op
             <Label>Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                  <SelectItem value="MANAGER">Manager</SelectItem>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Active</SelectItem>
+                  <SelectItem value="NOTICE_PERIOD">Notice Period</SelectItem>
+                  <SelectItem value="RESIGNED">Resigned</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="space-y-2">
-            <Label>Role</Label>
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                <SelectItem value="MANAGER">Manager</SelectItem>
-                <SelectItem value="ADMIN">Admin</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label>Probation End Date</Label>
+            <Input type="date" value={probationEndDate} onChange={(e) => setProbationEndDate(e.target.value)} />
+            <p className="text-[10px] text-slate-500">Set the date when the employee&apos;s probation period ends.</p>
           </div>
           <div className="space-y-2">
             <Label>Last Working Day (LWD)</Label>

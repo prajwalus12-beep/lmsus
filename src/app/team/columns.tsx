@@ -3,7 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowUpDown, Calculator, Trash2, Edit, Eye } from "lucide-react"
+import { ArrowUpDown, Calculator, Trash2, Edit } from "lucide-react"
 import { toast } from "sonner"
 import { useState } from "react"
 import { EditEmployeeDialog } from "./EditEmployeeDialog"
@@ -18,6 +18,7 @@ export type TeamRow = {
   clSlBalance: number
   joinDate: string
   lastWorkingDay?: string | null
+  probationEndDate?: string | null
 }
 
 const ActionCell = ({ row }: { row: any }) => {
@@ -97,10 +98,17 @@ export const columns: ColumnDef<TeamRow>[] = [
     header: () => <span className="text-xs font-bold">Status</span>,
     cell: ({ row }) => {
       const role = row.getValue("role") as string
-      const joinDate = new Date(row.original.joinDate)
-      const sixMonthsAgo = new Date()
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-      const isProbation = joinDate > sixMonthsAgo
+      const probationEndDateStr = row.original.probationEndDate
+      
+      let isProbation = false
+      if (probationEndDateStr) {
+        isProbation = new Date(probationEndDateStr) > new Date()
+      } else {
+        const joinDate = new Date(row.original.joinDate)
+        const sixMonthsAgo = new Date()
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+        isProbation = joinDate > sixMonthsAgo
+      }
 
       return (
         <div className="flex flex-col gap-1">
@@ -133,6 +141,11 @@ export const columns: ColumnDef<TeamRow>[] = [
     accessorKey: "joinDate",
     header: () => <span className="text-xs font-bold">Joined</span>,
     cell: ({ row }) => <span className="text-xs">{row.getValue("joinDate")}</span>
+  },
+  {
+    accessorKey: "probationEndDate",
+    header: () => <span className="text-xs font-bold">Probation End</span>,
+    cell: ({ row }) => <span className="text-xs text-amber-600">{row.getValue("probationEndDate") || "—"}</span>
   },
   {
     accessorKey: "lastWorkingDay",

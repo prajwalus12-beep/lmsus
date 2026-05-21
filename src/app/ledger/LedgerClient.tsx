@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { 
-  BookOpen, User, TrendingDown, TrendingUp, EyeOff, Loader2, Download, FileText, CheckCircle2, Info 
+  BookOpen, User, TrendingDown, TrendingUp, EyeOff, Loader2, Download, FileText, CheckCircle2, Info, Save
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { jsPDF } from "jspdf"
@@ -128,7 +128,14 @@ export function LedgerClient({
       const data = await res.json()
       if (data.entries) {
         setEntries(data.entries)
-        setSelectedUser(data.user)
+        setSelectedUser(prev => ({
+          ...prev,
+          id: data.user?.id ?? userId,
+          name: data.user?.name ?? prev.name,
+          department: data.user?.department ?? prev.department,
+          openingCl: data.balance?.openingCl ?? prev.openingCl,
+          openingPl: data.balance?.openingPl ?? prev.openingPl,
+        }))
       }
     } finally {
       setLoading(false)
@@ -219,17 +226,14 @@ export function LedgerClient({
           {isHR && allUsers.length > 0 && (
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-slate-500" />
-              <Select defaultValue={initialUser.id} onValueChange={(v) => v && handleUserChange(v)}>
+              <Select value={selectedUser.id} onValueChange={(v) => v && handleUserChange(v)}>
                 <SelectTrigger className="w-56 bg-white">
                   <SelectValue placeholder="Select employee" />
                 </SelectTrigger>
                 <SelectContent>
                   {allUsers.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
-                      <span className="font-medium">{u.name}</span>
-                      {u.department && (
-                        <span className="ml-2 text-xs text-slate-400">{u.department.name}</span>
-                      )}
+                      {u.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -324,6 +328,24 @@ export function LedgerClient({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {isHR && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  const res = await fetch("/api/admin/sync-ledger", { method: "POST" })
+                  if (res.ok) {
+                    toast.success("Ledger database updated successfully")
+                    fetchLedger(selectedUser.id, selectedYear)
+                  } else {
+                    toast.error("Failed to update ledger database")
+                  }
+                }}
+                className="text-amber-600 border-amber-200 hover:bg-amber-50"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" /> Update Database
+              </Button>
+            )}
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={handleExportCSV}>
                 <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
@@ -347,10 +369,10 @@ export function LedgerClient({
                   <TableHead className="text-slate-600 font-semibold">Date</TableHead>
                   <TableHead className="text-slate-600 font-semibold min-w-[220px]">Particulars</TableHead>
                   <TableHead className="text-center text-slate-600 font-semibold">Type</TableHead>
-                  <TableHead className="text-right text-slate-600 font-semibold">Days</TableHead>
+                  <TableHead className="text-right text-slate-600 font-semibold">Duration</TableHead>
                   {/* CL section */}
                   <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-l border-amber-200">
-                    Working Days
+                    Worked Days (Month)
                   </TableHead>
                   <TableHead className="text-right text-amber-700 font-semibold bg-amber-50">
                     CL Debit

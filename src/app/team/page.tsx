@@ -1,16 +1,25 @@
-import { PrismaClient } from '@prisma/client'
+import prisma from '@/lib/prisma'
 import { TeamDataTable } from './TeamDataTable'
 import { columns } from './columns'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { redirect } from 'next/navigation'
 
-const prisma = new PrismaClient()
+export const dynamic = 'force-dynamic'
 
 export default async function TeamPage() {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) redirect('/login')
+
   const users = await prisma.user.findMany({
     include: {
       department: true,
-      balances: true
+      balances: true,
     },
-    orderBy: { name: 'asc' }
+    where: {
+      role: { not: 'ADMIN' }, // De-link HR accounts from employee directory
+    },
+    orderBy: { name: 'asc' },
   });
 
   const formattedData = users.map(user => ({
@@ -18,11 +27,14 @@ export default async function TeamPage() {
     name: user.name,
     email: user.email,
     role: user.role,
+    status: user.status,
     department: user.department?.name || 'N/A',
+    departmentId: user.departmentId || '',
     plBalance: user.balances?.pl || 0,
     clSlBalance: (user.balances?.cl || 0) + (user.balances?.sl || 0),
     joinDate: user.joinDate.toLocaleDateString(),
-    lastWorkingDay: user.lastWorkingDay ? user.lastWorkingDay.toLocaleDateString() : null
+    lastWorkingDay: user.lastWorkingDay ? user.lastWorkingDay.toLocaleDateString() : null,
+    probationEndDate: user.probationEndDate ? user.probationEndDate.toISOString().split('T')[0] : null,
   }));
 
   return (

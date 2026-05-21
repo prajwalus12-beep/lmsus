@@ -20,8 +20,8 @@ const TEST_ACCOUNTS = [
     dot: "bg-purple-500",
   },
   {
-    name: "Jane Smith",
-    email: "jane.manager@company.com",
+    name: "Rahul Verma",
+    email: "manager@company.com",
     role: "Manager",
     dept: "Engineering",
     color: "bg-blue-100 text-blue-700 border-blue-200",
@@ -29,7 +29,7 @@ const TEST_ACCOUNTS = [
   },
   {
     name: "John Doe",
-    email: "john.doe@company.com",
+    email: "john@company.com",
     role: "Employee",
     dept: "Engineering",
     color: "bg-green-100 text-green-700 border-green-200",

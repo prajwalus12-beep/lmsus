@@ -31,15 +31,45 @@ model User {
   daysWorked      Int                     @default(0)
   status          String                  @default("ACTIVE") // ACTIVE, RESIGNED, NOTICE_PERIOD
   balances        LeaveBalance?
-  requests        LeaveRequest[]
+  requests        LeaveRequest[]          @relation("UserRequests")
+  approvedRequests LeaveRequest[]         @relation("ApprovedRequests")
   adjustments     LeaveBalanceAdjustment[]
   negativeLeaves  NegativeLeaveTracking[]
-  compOffEntries  CompOffWorkEntry[]
+  compOffEntries  CompOffWorkEntry[]      @relation("UserCompOff")
+  approvedCompOff CompOffWorkEntry[]      @relation("ApprovedCompOff")
   auditLogs       AuditLog[]
+  ledgerEntries   LeaveLedgerEntry[]
   lastWorkingDay  DateTime?
+  probationEndDate DateTime?
   communicationEmail String                  @default("sandeepjain200019@gmail.com")
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
+}
+
+model LeaveLedgerEntry {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date           DateTime
+  type           String   // OPENING, CLOSING, PL, CL, SL, COMP, ACCRUAL, ADJ-PL, ADJ-CL, etc.
+  description    String
+  startDate      DateTime?
+  endDate        DateTime?
+  days           Float?
+  clDebit        Float?
+  clCredit       Float?
+  clBalance      Float
+  plDebit        Float?
+  plCredit       Float?
+  plBalance      Float
+  workingDays    Float?   // Working days in the month of this entry
+  isOpening      Boolean  @default(false)
+  isAdjustment   Boolean  @default(false)
+  isClosing      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId, date])
 }
 
 model LeaveBalance {
@@ -72,7 +102,7 @@ model LeaveBalance {
 model LeaveRequest {
   id             String   @id @default(cuid())
   userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User     @relation("UserRequests", fields: [userId], references: [id], onDelete: Cascade)
   type           String   // PL, CL, SL, COMP, LOP, MAT
   startDate      DateTime
   endDate        DateTime
@@ -83,6 +113,9 @@ model LeaveRequest {
   negativeAmount Float    @default(0)        // How many days went negative
   attachmentUrl  String?
   year           Int      @default(2026)
+  approvedById   String?
+  approvedBy     User?    @relation("ApprovedRequests", fields: [approvedById], references: [id])
+  approvedAt     DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
@@ -112,13 +145,16 @@ model WeekendConfig {
 model CompOffWorkEntry {
   id          String   @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User     @relation("UserCompOff", fields: [userId], references: [id], onDelete: Cascade)
   dateWorked  DateTime
   hoursWorked Float
   reason      String
   status      String   @default("PENDING") // PENDING, APPROVED, REJECTED, EXPIRED, USED
   expiryDate  DateTime?
   daysCredited Float   @default(0)
+  approvedById String?
+  approvedBy   User?    @relation("ApprovedCompOff", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

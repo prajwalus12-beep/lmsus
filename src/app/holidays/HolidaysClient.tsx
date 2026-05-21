@@ -1,15 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Edit2, Trash2, Calendar, Loader2 } from "lucide-react"
+import { Plus, Edit2, Trash2, Calendar, Loader2, List, Download } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type Holiday = {
   id: string
@@ -25,14 +27,11 @@ export function HolidaysClient() {
   const [name, setName] = useState("")
   const [date, setDate] = useState("")
   const [saving, setSaving] = useState(false)
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const { data: session } = useSession()
   const isAdmin = (session?.user as any)?.role === "ADMIN"
 
-  useEffect(() => {
-    fetchHolidays()
-  }, [])
-
-  const fetchHolidays = async () => {
+  const fetchHolidays = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch("/api/holidays")
@@ -41,7 +40,15 @@ export function HolidaysClient() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchHolidays()
+  }, [fetchHolidays])
+
+  const filteredHolidays = holidays.filter(h => new Date(h.date).getFullYear() === selectedYear)
+  const years = Array.from(new Set(holidays.map(h => new Date(h.date).getFullYear()))).sort()
+  if (!years.includes(new Date().getFullYear())) years.push(new Date().getFullYear())
 
   const handleOpenAdd = () => {
     setEditing(null)
@@ -93,72 +100,157 @@ export function HolidaysClient() {
     }
   }
 
+  const handleExportCSV = () => {
+    const headers = ["Holiday Name", "Date", "Day"]
+    const rows = filteredHolidays.map(h => {
+      const d = new Date(h.date)
+      return [
+        h.name,
+        d.toLocaleDateString('en-GB'),
+        d.toLocaleDateString('en-GB', { weekday: 'long' })
+      ]
+    })
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(r => r.map(cell => `"${cell}"`).join(","))
+    ].join("\n")
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.body.appendChild(document.createElement("a"))
+    link.href = URL.createObjectURL(blob)
+    link.download = `holidays_${selectedYear}.csv`
+    link.click()
+    document.body.removeChild(link)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Public Holidays</h1>
-          <p className="text-slate-500">Manage the annual holiday calendar for leave calculations.</p>
+          <p className="text-slate-500">View and manage the annual holiday calendar.</p>
         </div>
-        {isAdmin && (
-          <Button onClick={handleOpenAdd} className="bg-indigo-600 hover:bg-indigo-700">
-            <Plus className="w-4 h-4 mr-2" /> Add Holiday
+        <div className="flex gap-2">
+          <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+            <SelectTrigger className="w-32 bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={handleExportCSV}>
+            <Download className="w-4 h-4 mr-2" /> Export
           </Button>
-        )}
+          {isAdmin && (
+            <Button onClick={handleOpenAdd} className="bg-indigo-600 hover:bg-indigo-700">
+              <Plus className="w-4 h-4 mr-2" /> Add Holiday
+            </Button>
+          )}
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow>
-                <TableHead className="w-[300px]">Holiday Name</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Day</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-10">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-500" />
-                  </TableCell>
-                </TableRow>
-              ) : holidays.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-10 text-slate-400">
-                    No holidays found. Add one to get started.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                holidays.map((h) => {
-                  const d = new Date(h.date)
-                  return (
-                    <TableRow key={h.id}>
-                      <TableCell className="font-medium text-slate-800">{h.name}</TableCell>
-                      <TableCell>{d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</TableCell>
-                      <TableCell className="text-slate-500">{d.toLocaleDateString('en-GB', { weekday: 'long' })}</TableCell>
-                      <TableCell className="text-right">
-                        {isAdmin && (
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(h)}>
-                              <Edit2 className="w-4 h-4 text-slate-400 hover:text-indigo-600" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(h.id)}>
-                              <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-600" />
-                            </Button>
-                          </div>
-                        )}
+      <Tabs defaultValue="list">
+        <TabsList>
+          <TabsTrigger value="list" className="flex items-center gap-2">
+            <List className="w-4 h-4" /> List View
+          </TabsTrigger>
+          <TabsTrigger value="calendar" className="flex items-center gap-2">
+            <Calendar className="w-4 h-4" /> Calendar View
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list">
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow>
+                    <TableHead className="w-[300px]">Holiday Name</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Day</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-10">
+                        <Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-500" />
                       </TableCell>
                     </TableRow>
+                  ) : filteredHolidays.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-10 text-slate-400">
+                        No holidays found for {selectedYear}.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredHolidays.map((h) => {
+                      const d = new Date(h.date)
+                      return (
+                        <TableRow key={h.id}>
+                          <TableCell className="font-medium text-slate-800">{h.name}</TableCell>
+                          <TableCell>{d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</TableCell>
+                          <TableCell className="text-slate-500">{d.toLocaleDateString('en-GB', { weekday: 'long' })}</TableCell>
+                          <TableCell className="text-right">
+                            {isAdmin && (
+                              <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(h)}>
+                                  <Edit2 className="w-4 h-4 text-slate-400 hover:text-indigo-600" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleDelete(h.id)}>
+                                  <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-600" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="calendar">
+          <Card>
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {Array.from({ length: 12 }).map((_, i) => {
+                  const monthDate = new Date(selectedYear, i, 1)
+                  const monthHolidays = filteredHolidays.filter(h => new Date(h.date).getMonth() === i)
+                  
+                  return (
+                    <div key={i} className="space-y-3">
+                      <h3 className="font-bold text-slate-900 border-b pb-2">
+                        {monthDate.toLocaleString('default', { month: 'long' })}
+                      </h3>
+                      <div className="space-y-1.5">
+                        {monthHolidays.length > 0 ? monthHolidays.map(h => (
+                          <div key={h.id} className="flex items-center gap-2 p-2 bg-indigo-50 border border-indigo-100 rounded text-xs">
+                            <span className="font-bold text-indigo-700">
+                              {new Date(h.date).getDate()}
+                            </span>
+                            <span className="text-indigo-600 truncate" title={h.name}>{h.name}</span>
+                          </div>
+                        )) : (
+                          <p className="text-[10px] text-slate-400 italic py-1">No holidays</p>
+                        )}
+                      </div>
+                    </div>
                   )
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

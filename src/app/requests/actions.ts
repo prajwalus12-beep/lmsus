@@ -12,11 +12,16 @@ export async function approveRequest(id: string) {
   if (!session) throw new Error("Unauthorized")
 
   const userRole = (session.user as any).role
+  const approverId = (session.user as any).id
   const status = userRole === "ADMIN" ? "HR_APPROVED" : "L1_APPROVED"
 
   const request = await prisma.leaveRequest.update({
     where: { id },
-    data: { status },
+    data: { 
+      status,
+      approvedById: approverId,
+      approvedAt: new Date()
+    },
     include: { user: true }
   })
 
@@ -87,12 +92,18 @@ export async function rejectRequest(id: string) {
 }
 
 export async function approveCompOff(id: string) {
+  const session = await getServerSession(authOptions)
+  if (!session) throw new Error("Unauthorized")
+  const approverId = (session.user as any).id
+
   return await prisma.$transaction(async (tx) => {
     const entry = await tx.compOffWorkEntry.update({
       where: { id },
       data: { 
         status: "APPROVED",
-        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        approvedById: approverId,
+        approvedAt: new Date()
       },
       include: { user: true }
     })
