@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
       });
 
       const events = [
-        ...approvedLeaves.map(l => ({ kind: 'leave', date: l.startDate, data: l })),
-        ...adjustments.map(a => ({ kind: 'adj', date: a.createdAt, data: a })),
+        ...approvedLeaves.map(l => ({ kind: 'leave' as const, date: l.startDate, data: l })),
+        ...adjustments.map(a => ({ kind: 'adj' as const, date: a.createdAt, data: a })),
       ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
       for (const ev of events) {

@@ -6,6 +6,7 @@ import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { sendEmail } from "@/lib/email"
 import { calculateRequestedDays } from "@/lib/leaveCalculator"
+import { syncUserLedger } from "@/lib/ledgerSync"
 
 export async function approveRequest(id: string) {
   const session = await getServerSession(authOptions)
@@ -62,6 +63,9 @@ export async function approveRequest(id: string) {
           [`${leaveType}Used`]: { increment: days }
         }
       })
+      
+      // Keep ledger in sync
+      await syncUserLedger(request.userId, request.startDate.getFullYear())
     }
   }
 

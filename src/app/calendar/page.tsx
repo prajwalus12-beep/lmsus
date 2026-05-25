@@ -8,10 +8,19 @@ const prisma = new PrismaClient()
 export default async function CalendarPage() {
   const session = await getServerSession(authOptions)
   
+  const sessionUser = session?.user as any;
+  const isAdmin = sessionUser?.role === 'ADMIN';
+
+  const whereClause: any = {
+    status: { in: ['HR_APPROVED', 'L1_APPROVED'] }
+  };
+
+  if (!isAdmin && sessionUser?.id) {
+    whereClause.userId = sessionUser.id;
+  }
+
   const requests = await prisma.leaveRequest.findMany({
-    where: {
-      status: { in: ['HR_APPROVED', 'L1_APPROVED'] }
-    },
+    where: whereClause,
     include: {
       user: {
         include: { department: true }

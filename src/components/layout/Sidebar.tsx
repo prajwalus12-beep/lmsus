@@ -48,9 +48,9 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
   if (role === "ADMIN") {
     visibleNavItems = navItems.filter(item => !["My Portal"].includes(item.name));
   } else if (role === "MANAGER") {
-    visibleNavItems = navItems.filter(item => ["Dashboard", "My Portal", "Leave Ledger", "Requests", "Calendar", "Holidays", "Team Directory", "Profile"].includes(item.name));
+    visibleNavItems = navItems.filter(item => ["Dashboard", "My Portal", "Leave Ledger", "Requests", "Leave Register", "Calendar", "Holidays", "Team Directory", "Profile"].includes(item.name));
   } else if (role === "EMPLOYEE") {
-    visibleNavItems = navItems.filter(item => ["My Portal", "Leave Ledger", "Calendar", "Team Directory", "Profile"].includes(item.name));
+    visibleNavItems = navItems.filter(item => ["My Portal", "Leave Ledger", "Leave Register", "Calendar", "Team Directory", "Profile"].includes(item.name));
   }
 
   return (

@@ -21,27 +21,33 @@ export default async function LedgerPage() {
   const startOfYear = new Date(`${year}-01-01T00:00:00.000Z`)
   const endOfYear = new Date(`${year}-12-31T23:59:59.999Z`)
 
-  const [clBalanceSetting, user, allUsers, ledgerEntries] = await Promise.all([
+  const allUsers = isHR
+    ? await prisma.user.findMany({
+        select: { id: true, name: true, department: { select: { name: true } } },
+        where: {
+          status: { in: ['ACTIVE', 'NOTICE_PERIOD'] },
+          role: { not: 'ADMIN' },
+        },
+        orderBy: { name: 'asc' },
+      })
+    : []
+
+  let targetUserId = userId
+  if (isHR && allUsers.length > 0) {
+    targetUserId = allUsers[0].id
+  }
+
+  const [clBalanceSetting, user, ledgerEntries] = await Promise.all([
     prisma.systemConfig.findUnique({
       where: { key: 'SHOW_CL_BALANCE_TO_EMPLOYEE' },
     }),
     prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: targetUserId },
       include: { balances: true, department: true },
     }),
-    isHR
-      ? prisma.user.findMany({
-          select: { id: true, name: true, department: { select: { name: true } } },
-          where: {
-            status: { in: ['ACTIVE', 'NOTICE_PERIOD'] },
-            role: { not: 'ADMIN' },
-          },
-          orderBy: { name: 'asc' },
-        })
-      : Promise.resolve([]),
     prisma.leaveLedgerEntry.findMany({
       where: { 
-        userId, 
+        userId: targetUserId, 
         date: { gte: startOfYear, lte: endOfYear } 
       },
       orderBy: [

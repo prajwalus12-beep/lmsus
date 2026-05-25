@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { calculateMonthlyPLAccrual } from '@/lib/accrualEngine'
+import { syncUserLedger } from '@/lib/ledgerSync'
 
 const prisma = new PrismaClient()
 
@@ -50,6 +51,8 @@ export async function POST(req: NextRequest) {
           plAccrued: { increment: calc.accrued }
         }
       })
+
+      await syncUserLedger(user.id)
 
       results.push({ user: user.name, accrued: calc.accrued })
     }

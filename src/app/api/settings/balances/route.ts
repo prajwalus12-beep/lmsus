@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { syncUserLedger } from '@/lib/ledgerSync'
 
 export async function PUT(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -35,6 +36,9 @@ export async function PUT(req: NextRequest) {
         metadata: `HR adjusted opening balances for user ${userId}`
       }
     })
+
+    // Keep ledger in sync
+    await syncUserLedger(userId, updatedBalance.year)
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

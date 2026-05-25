@@ -13,7 +13,11 @@ export default async function LeaveRegisterPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
+  const sessionUser = session.user as any
+  const whereClause = sessionUser.role === 'ADMIN' ? {} : { userId: sessionUser.id }
+
   const requests = await prisma.leaveRequest.findMany({
+    where: whereClause,
     include: {
       user: { include: { department: true } },
       approvedBy: true

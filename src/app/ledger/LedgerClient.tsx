@@ -116,6 +116,7 @@ export function LedgerClient({
   showClBalance,
 }: Props) {
   const isHR = role === "ADMIN"
+  const showClBalanceColumn = role !== "EMPLOYEE"
   const [entries, setEntries] = useState<LedgerEntry[]>(initialEntries)
   const [selectedUser, setSelectedUser] = useState<UserInfo>(initialUser)
   const [loading, setLoading] = useState(false)
@@ -156,25 +157,29 @@ export function LedgerClient({
   const totalClTaken = entries.reduce((acc, e) => acc + (e.clDebit || 0), 0)
   const totalPlTaken = entries.reduce((acc, e) => acc + (e.plDebit || 0), 0)
   
-  const closing = entries.find((e) => e.isClosing)
-
   const yearOptions = [year - 1, year, year + 1].filter((y) => y >= 2024)
 
   const handleExportCSV = () => {
-    const headers = [
-      "Date", "Description", "Type", "Days", 
-      "CL Debit", "CL Balance", "PL Debit", "PL Balance"
-    ]
-    const rows = entries.map(e => [
-      fmtDate(e.startDate ?? e.date),
-      e.description,
-      e.type,
-      fmtDays(e.days),
-      e.clDebit !== null ? fmtDays(e.clDebit) : (e.clCredit !== null ? `+${fmtDays(e.clCredit)}` : ""),
-      (!showClBalance && !isHR) ? "Hidden" : fmtDays(e.clBalance),
-      e.plDebit !== null ? fmtDays(e.plDebit) : (e.plCredit !== null ? `+${fmtDays(e.plCredit)}` : ""),
-      fmtDays(e.plBalance)
-    ])
+    const headers = showClBalanceColumn 
+      ? ["Date", "Description", "Type", "Days", "CL Debit", "CL Balance", "PL Debit", "PL Balance"]
+      : ["Date", "Description", "Type", "Days", "CL Debit", "PL Debit", "PL Balance"]
+    const rows = entries.map(e => {
+      const row = [
+        fmtDate(e.startDate ?? e.date),
+        e.description,
+        e.type,
+        fmtDays(e.days),
+        e.clDebit !== null ? fmtDays(e.clDebit) : (e.clCredit !== null ? `+${fmtDays(e.clCredit)}` : "")
+      ]
+      if (showClBalanceColumn) {
+        row.push(fmtDays(e.clBalance))
+      }
+      row.push(
+        e.plDebit !== null ? fmtDays(e.plDebit) : (e.plCredit !== null ? `+${fmtDays(e.plCredit)}` : ""),
+        fmtDays(e.plBalance)
+      )
+      return row
+    })
 
     const csvContent = [
       headers.join(","),
@@ -199,17 +204,28 @@ export function LedgerClient({
     doc.setFontSize(10)
     doc.text(`Year: ${selectedYear} | Department: ${selectedUser.department} | Generated: ${new Date().toLocaleDateString()}`, 14, 22)
 
-    autoTable(doc, {
-      startY: 30,
-      head: [["Date", "Description", "Type", "Days", "CL Bal", "PL Bal"]],
-      body: entries.map(e => [
+    const head = showClBalanceColumn
+      ? [["Date", "Description", "Type", "Days", "CL Bal", "PL Bal"]]
+      : [["Date", "Description", "Type", "Days", "PL Bal"]]
+
+    const body = entries.map(e => {
+      const row = [
         fmtDate(e.startDate ?? e.date),
         e.description,
         e.type,
-        fmtDays(e.days),
-        (!showClBalance && !isHR) ? "Hidden" : fmtDays(e.clBalance),
-        fmtDays(e.plBalance)
-      ]),
+        fmtDays(e.days)
+      ]
+      if (showClBalanceColumn) {
+        row.push(fmtDays(e.clBalance))
+      }
+      row.push(fmtDays(e.plBalance))
+      return row
+    })
+
+    autoTable(doc, {
+      startY: 30,
+      head: head,
+      body: body,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [79, 70, 229] },
     })
@@ -218,9 +234,80 @@ export function LedgerClient({
     toast.success("PDF Exported Successfully")
   }
 
+  const zeroDayEntry = entries.find(e => !e.isOpening && !e.isClosing && e.days === 0)
+
+  if (zeroDayEntry) {
+    return (
+      <div className="space-y-5">
+        <Card className="border-red-200 bg-red-50/50 max-w-4xl mx-auto shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2 text-red-700">
+              <Info className="w-5 h-5 shrink-0" />
+              <CardTitle className="text-lg font-semibold">Ledger Validation Error</CardTitle>
+            </div>
+            <CardDescription className="text-red-600 text-sm mt-1">
+              The leave ledger cannot be generated due to an entry with a duration of zero days.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="text-slate-700 text-sm leading-relaxed">
+              <p>
+                To prevent wrong calculations, the system blocks ledger generation if any normal leave request or adjustment has a duration of 0 days. 
+              </p>
+              <p className="mt-2">
+                This is usually caused by an employee applying for leave on a weekend or public holiday when sandwich configuration is disabled, or a system date timezone mismatch.
+              </p>
+            </div>
+            
+            <div className="bg-white border border-red-100 rounded-xl p-4 text-xs font-mono text-slate-700 space-y-1.5 shadow-inner">
+              <p className="font-bold text-slate-800 text-sm mb-1">Affected Entry Details:</p>
+              <p><span className="text-slate-400">Date:</span> {fmtDate(zeroDayEntry.startDate ?? zeroDayEntry.date)}</p>
+              <p><span className="text-slate-400">Type:</span> {zeroDayEntry.type}</p>
+              <p><span className="text-slate-400">Particulars:</span> {zeroDayEntry.description}</p>
+              <p><span className="text-slate-400">Duration:</span> {zeroDayEntry.days} days</p>
+            </div>
+
+            {isHR && (
+              <div className="flex items-center gap-3 pt-2">
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    setLoading(true)
+                    try {
+                      const res = await fetch("/api/admin/sync-ledger", { method: "POST" })
+                      if (res.ok) {
+                        toast.success("Ledger database updated and recalculated successfully")
+                        fetchLedger(selectedUser.id, selectedYear)
+                      } else {
+                        toast.error("Failed to update ledger database")
+                      }
+                    } finally {
+                      setLoading(false)
+                    }
+                  }}
+                  disabled={loading}
+                  className="bg-red-600 hover:bg-red-700 text-white animate-pulse"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Recalculating...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" /> Recalculate &amp; Sync Database
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
-      {/* ── Controls bar ── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3 flex-wrap">
           {isHR && allUsers.length > 0 && (
@@ -255,7 +342,6 @@ export function LedgerClient({
           </Select>
         </div>
 
-        {/* Employee chip */}
         <div className="flex items-center gap-2 text-sm text-slate-600 bg-white border rounded-lg px-3 py-1.5 shadow-sm">
           <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 text-xs">
             {selectedUser.name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()}
@@ -267,7 +353,6 @@ export function LedgerClient({
         </div>
       </div>
 
-      {/* ── Summary cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="p-4">
@@ -308,7 +393,6 @@ export function LedgerClient({
         </Card>
       </div>
 
-      {/* ── Ledger Table ── */}
       <Card className="shadow-sm">
         <CardHeader className="border-b pb-4 flex flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -319,11 +403,6 @@ export function LedgerClient({
               </CardTitle>
               <CardDescription className="text-xs mt-0.5">
                 All approved CL &amp; PL transactions with running balance
-                {!showClBalance && !isHR && (
-                  <span className="ml-2 inline-flex items-center gap-1 text-amber-600">
-                    <EyeOff className="w-3 h-3" /> CL balance hidden by policy
-                  </span>
-                )}
               </CardDescription>
             </div>
           </div>
@@ -370,98 +449,16 @@ export function LedgerClient({
                   <TableHead className="text-slate-600 font-semibold min-w-[220px]">Particulars</TableHead>
                   <TableHead className="text-center text-slate-600 font-semibold">Type</TableHead>
                   <TableHead className="text-right text-slate-600 font-semibold">Duration</TableHead>
-                  {/* CL section */}
-                  <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-l border-amber-200">
-                    Worked Days (Month)
-                  </TableHead>
-                  <TableHead className="text-right text-amber-700 font-semibold bg-amber-50">
-                    CL Debit
-                  </TableHead>
-                  <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-r border-amber-200">
-                    CL Balance
-                  </TableHead>
-                  {/* PL section */}
-                  <TableHead className="text-right text-violet-700 font-semibold bg-violet-50 border-l border-violet-200">
-                    PL Debit
-                  </TableHead>
-                  <TableHead className="text-right text-violet-700 font-semibold bg-violet-50">
-                    PL Balance
-                  </TableHead>
+                  <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-l border-amber-200">CL Debit</TableHead>
+                  {showClBalanceColumn && <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-r border-amber-200">CL Bal</TableHead>}
+                  <TableHead className="text-right text-violet-700 font-semibold bg-violet-50 border-l border-violet-200">PL Debit</TableHead>
+                  <TableHead className="text-right text-violet-700 font-semibold bg-violet-50">PL Bal</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {entries.map((entry, idx) => {
                   const isSpecial = entry.isOpening || entry.isClosing
-
-                  if (entry.isOpening) {
-                    return (
-                      <TableRow
-                        key={entry.id}
-                        className="bg-indigo-50 border-b-2 border-indigo-200 font-semibold"
-                      >
-                        <TableCell className="text-center text-indigo-400 text-xs">—</TableCell>
-                        <TableCell className="text-indigo-700 font-semibold whitespace-nowrap">
-                          {fmtDate(entry.date)}
-                        </TableCell>
-                        <TableCell className="text-indigo-800 font-semibold">
-                          {entry.description}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <TypeBadge type={entry.type} />
-                        </TableCell>
-                        <TableCell className="text-right text-indigo-500">—</TableCell>
-                        {/* CL opening */}
-                        <TableCell className="text-right bg-amber-50 border-l border-amber-200 text-amber-600">
-                          —
-                        </TableCell>
-                        <TableCell className="text-right bg-amber-50 border-r border-amber-200">
-                          <BalancePill val={entry.clBalance} hide={!showClBalance} />
-                        </TableCell>
-                        {/* PL opening */}
-                        <TableCell className="text-right bg-violet-50 border-l border-violet-200 text-violet-600">
-                          —
-                        </TableCell>
-                        <TableCell className="text-right bg-violet-50">
-                          <BalancePill val={entry.plBalance} />
-                        </TableCell>
-                      </TableRow>
-                    )
-                  }
-
-                  if (entry.isClosing) {
-                    return (
-                      <TableRow
-                        key={entry.id}
-                        className="bg-slate-100 border-t-2 border-slate-300 font-bold"
-                      >
-                        <TableCell className="text-center text-slate-400 text-xs">—</TableCell>
-                        <TableCell className="text-slate-700 font-bold whitespace-nowrap">
-                          {fmtDate(entry.date)}
-                        </TableCell>
-                        <TableCell className="text-slate-800 font-bold">
-                          {entry.description}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <TypeBadge type={entry.type} />
-                        </TableCell>
-                        <TableCell className="text-right text-slate-400">—</TableCell>
-                        <TableCell className="text-right bg-amber-50 border-l border-amber-200 text-slate-400">
-                          —
-                        </TableCell>
-                        <TableCell className="text-right bg-amber-50 border-r border-amber-200">
-                          <BalancePill val={entry.clBalance} hide={!showClBalance} />
-                        </TableCell>
-                        <TableCell className="text-right bg-violet-50 border-l border-violet-200 text-slate-400">
-                          —
-                        </TableCell>
-                        <TableCell className="text-right bg-violet-50">
-                          <BalancePill val={entry.plBalance} />
-                        </TableCell>
-                      </TableRow>
-                    )
-                  }
-
                   // Normal leave / adjustment row
                   const rowNum = entries
                     .slice(0, idx)
