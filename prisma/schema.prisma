@@ -62,6 +62,9 @@ model LeaveLedgerEntry {
   plDebit        Float?
   plCredit       Float?
   plBalance      Float
+  compDebit      Float?
+  compCredit     Float?
+  compBalance    Float    @default(0)
   workingDays    Float?   // Working days in the month of this entry
   isOpening      Boolean  @default(false)
   isAdjustment   Boolean  @default(false)
@@ -308,3 +311,4 @@ model SeedSystemConfig {
   value       String
   createdAt   DateTime @default(now())
 }
+

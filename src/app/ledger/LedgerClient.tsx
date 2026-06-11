@@ -31,6 +31,7 @@ type LedgerEntry = {
   isOpening: boolean
   isAdjustment: boolean
   isClosing: boolean
+  workingDays: number | null
 }
 
 type UserInfo = {
@@ -205,15 +206,16 @@ export function LedgerClient({
     doc.text(`Year: ${selectedYear} | Department: ${selectedUser.department} | Generated: ${new Date().toLocaleDateString()}`, 14, 22)
 
     const head = showClBalanceColumn
-      ? [["Date", "Description", "Type", "Days", "CL Bal", "PL Bal"]]
-      : [["Date", "Description", "Type", "Days", "PL Bal"]]
+      ? [["Date", "Description", "Type", "Days", "Work Days", "CL Bal", "PL Bal"]]
+      : [["Date", "Description", "Type", "Days", "Work Days", "PL Bal"]]
 
     const body = entries.map(e => {
       const row = [
         fmtDate(e.startDate ?? e.date),
         e.description,
         e.type,
-        fmtDays(e.days)
+        fmtDays(e.days),
+        fmtDays(e.workingDays)
       ]
       if (showClBalanceColumn) {
         row.push(fmtDays(e.clBalance))
@@ -449,6 +451,7 @@ export function LedgerClient({
                   <TableHead className="text-slate-600 font-semibold min-w-[220px]">Particulars</TableHead>
                   <TableHead className="text-center text-slate-600 font-semibold">Type</TableHead>
                   <TableHead className="text-right text-slate-600 font-semibold">Duration</TableHead>
+                  <TableHead className="text-right text-slate-500 font-semibold bg-amber-50/50 border-l border-amber-200 text-[10px] uppercase">Working Days</TableHead>
                   <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-l border-amber-200">CL Debit</TableHead>
                   {showClBalanceColumn && <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-r border-amber-200">CL Bal</TableHead>}
                   <TableHead className="text-right text-violet-700 font-semibold bg-violet-50 border-l border-violet-200">PL Debit</TableHead>
@@ -459,23 +462,24 @@ export function LedgerClient({
               <TableBody>
                 {entries.map((entry, idx) => {
                   const isSpecial = entry.isOpening || entry.isClosing
-                  // Normal leave / adjustment row
+                  const isAdj = entry.isAdjustment
+                  const isAccrual = entry.type === "ACCRUAL"
+                  const isCompCredit = entry.type === "COMP_CREDIT"
+                  
                   const rowNum = entries
                     .slice(0, idx)
                     .filter((e) => !e.isOpening && !e.isClosing).length + 1
 
-                  const isAdj = entry.isAdjustment
-                  const isAccrual = entry.type === "ACCRUAL"
-                  const rowClass = isAccrual
-                    ? "bg-indigo-50/40 hover:bg-indigo-50"
-                    : isAdj
-                      ? "bg-teal-50/40 hover:bg-teal-50"
-                      : "hover:bg-slate-50/80 transition-colors"
+                  let rowClass = "hover:bg-slate-50/80 transition-colors"
+                  if (isSpecial) rowClass = "bg-slate-50/80 font-semibold"
+                  else if (isAccrual) rowClass = "bg-indigo-50/40 hover:bg-indigo-50"
+                  else if (isAdj) rowClass = "bg-teal-50/40 hover:bg-teal-50"
+                  else if (isCompCredit) rowClass = "bg-green-50/40 hover:bg-green-50"
 
                   return (
                     <TableRow key={entry.id} className={`${rowClass} border-b border-slate-100`}>
                       <TableCell className="text-center text-xs text-slate-400 font-mono">
-                        {rowNum}
+                        {isSpecial ? "—" : rowNum}
                       </TableCell>
 
                       <TableCell className="whitespace-nowrap text-sm text-slate-600">
@@ -488,10 +492,10 @@ export function LedgerClient({
                       </TableCell>
 
                       <TableCell className="max-w-xs">
-                        <p className="text-sm text-slate-800 font-medium truncate" title={entry.description}>
+                        <p className={`text-sm ${isSpecial ? 'text-slate-900 font-bold' : 'text-slate-800 font-medium'} truncate`} title={entry.description}>
                           {entry.description}
                         </p>
-                        {entry.status && !isAdj && (
+                        {entry.status && !isAdj && !isSpecial && (
                           <span className="text-xs text-slate-400">{entry.status.replace(/_/g, " ")}</span>
                         )}
                         {isAdj && !isAccrual && (
@@ -500,6 +504,9 @@ export function LedgerClient({
                         {isAccrual && (
                           <span className="text-xs text-indigo-600 font-medium">Monthly PL Accrual</span>
                         )}
+                        {isCompCredit && (
+                          <span className="text-xs text-green-600 font-medium">Comp-Off Credited</span>
+                        )}
                       </TableCell>
 
                       <TableCell className="text-center">
@@ -507,26 +514,14 @@ export function LedgerClient({
                       </TableCell>
 
                       <TableCell className="text-right font-mono text-sm text-slate-700">
-                        {fmtDays(entry.days)}
+                        {entry.days ? fmtDays(entry.days) : "—"}
                       </TableCell>
 
                       {/* Working Days */}
                       <TableCell 
                         className="text-right bg-amber-50/60 border-l border-amber-100 font-mono text-xs text-slate-500"
-                        title={isAccrual && entry.description.includes("(") ? entry.description.split("(")[1]?.split(")")[0] : "Working Days Breakdown"}
                       >
-                        {(() => {
-                          const istDateStr = new Date(entry.date).toLocaleString("en-US", { 
-                            timeZone: "Asia/Kolkata", 
-                            day: "numeric" 
-                          })
-                          const isFirstOfMonth = istDateStr === "1"
-                          
-                          if (entry.workingDays && (isFirstOfMonth || isAccrual || entry.isOpening)) {
-                            return entry.workingDays
-                          }
-                          return "—"
-                        })()}
+                        {entry.workingDays ?? "—"}
                       </TableCell>
 
                       {/* CL debit */}
@@ -545,13 +540,15 @@ export function LedgerClient({
                       </TableCell>
 
                       {/* CL balance */}
-                      <TableCell className="text-right bg-amber-50/60 border-r border-amber-100">
-                        {entry.clDebit !== null || entry.clCredit !== null ? (
-                          <BalancePill val={entry.clBalance} hide={!showClBalance} />
-                        ) : (
-                          <span className="text-slate-300 text-sm">—</span>
-                        )}
-                      </TableCell>
+                      {showClBalanceColumn && (
+                        <TableCell className="text-right bg-amber-50/60 border-r border-amber-100">
+                          {entry.clBalance !== undefined ? (
+                            <BalancePill val={entry.clBalance} hide={!showClBalance} />
+                          ) : (
+                            <span className="text-slate-300 text-sm">—</span>
+                          )}
+                        </TableCell>
+                      )}
 
                       {/* PL debit */}
                       <TableCell className="text-right bg-violet-50/60 border-l border-violet-100">
@@ -570,7 +567,7 @@ export function LedgerClient({
 
                       {/* PL balance */}
                       <TableCell className="text-right bg-violet-50/60">
-                        {entry.plDebit !== null || entry.plCredit !== null ? (
+                        {entry.plBalance !== undefined ? (
                           <BalancePill val={entry.plBalance} />
                         ) : (
                           <span className="text-slate-300 text-sm">—</span>
@@ -580,12 +577,12 @@ export function LedgerClient({
                   )
                 })}
 
-                {entries.filter((e) => !e.isOpening && !e.isClosing).length === 0 && (
+                {entries.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-16 text-slate-400">
+                    <TableCell colSpan={10} className="text-center py-16 text-slate-400">
                       <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                      <p className="font-medium">No CL or PL leaves taken in {selectedYear}</p>
-                      <p className="text-xs mt-1">Only approved leaves appear here.</p>
+                      <p className="font-medium">No ledger data found for {selectedYear}</p>
+                      <p className="text-xs mt-1">Click "Update Database" to initialize.</p>
                     </TableCell>
                   </TableRow>
                 )}

@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { Bell, Menu, Search, Clock } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSession, signOut } from "next-auth/react";
+import { useSession, useSignOut } from "@/components/providers/AuthProvider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const [currentDate, setCurrentDate] = useState("2026-05-16");
   const { data: session } = useSession();
+  const signOut = useSignOut();
 
   const handleTimeTravel = () => {
     toast.success(`System date simulated to ${currentDate}`);
@@ -94,7 +95,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600" onClick={() => signOut({ callbackUrl: '/login' })}>Log out</DropdownMenuItem>
+            <DropdownMenuItem className="text-red-600" onClick={() => signOut()}>Log out</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

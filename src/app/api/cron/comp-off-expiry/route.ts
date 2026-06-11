@@ -1,81 +1,85 @@
 import { NextResponse } from "next/server"
-import { PrismaClient } from "@prisma/client"
+import { getSupabaseServer } from "@/lib/supabaseServer"
 import { getSystemDate } from "@/lib/systemDate"
 
-const prisma = new PrismaClient()
-
-// This route should be secured in production using an Authorization header 
-// matching a secret token configured in Vercel Cron or similar.
 export async function GET(request: Request) {
   try {
     const today = await getSystemDate()
-    
-    // Find all APPROVED comp-off entries that have expired and haven't been marked as EXPIRED yet
-    // Rule 41: Expiry windows (30, 45, 60 days). We assume 30 days is standard for now, 
-    // or we check the expiryDate field which was calculated upon approval.
-    
-    const expiredEntries = await prisma.compOffWorkEntry.findMany({
-      where: {
-        status: "APPROVED",
-        expiryDate: {
-          lt: today
-        }
-      }
-    })
+    const todayStr = today.toISOString()
+    const supabase = await getSupabaseServer()
 
-    if (expiredEntries.length === 0) {
+    // Find all APPROVED comp-off entries that have expired and haven't been marked as EXPIRED yet
+    const { data: expiredEntries, error: entriesError } = await supabase
+      .from('comp_off_work_entries')
+      .select('*')
+      .eq('status', 'APPROVED')
+      .lt('expiry_date', todayStr)
+
+    if (entriesError) throw new Error(entriesError.message)
+
+    if (!expiredEntries || expiredEntries.length === 0) {
       return NextResponse.json({ success: true, message: "No expired comp-offs found" })
     }
 
     let expiredCount = 0
 
-    // For each expired entry, we need to deduct the days from the user's COMP balance 
-    // and mark the entry as EXPIRED.
+    // For each expired entry, deduct from COMP balance and mark entry as EXPIRED.
     for (const entry of expiredEntries) {
-      // Find the user's current leave balance
-      const balance = await prisma.leaveBalance.findUnique({
-        where: { userId: entry.userId }
-      })
+      const { data: balance, error: balError } = await supabase
+        .from('leave_balances')
+        .select('*')
+        .eq('user_id', entry.user_id)
+        .single()
+
+      if (balError) {
+        console.error(`Error fetching balance for user ${entry.user_id}:`, balError)
+        continue
+      }
 
       if (balance && balance.comp > 0) {
-        // Only deduct up to what was credited, and don't go below 0 for comp.
-        // If the user already used it, their balance might be lower than the credited amount.
-        const deductAmount = Math.min(entry.daysCredited, balance.comp)
-        
-        await prisma.$transaction([
-          prisma.compOffWorkEntry.update({
-            where: { id: entry.id },
-            data: { status: "EXPIRED" }
-          }),
-          prisma.leaveBalance.update({
-            where: { id: balance.id },
-            data: { comp: { decrement: deductAmount } }
-          }),
-          prisma.auditLog.create({
-            data: {
-              userId: entry.userId,
-              action: "COMP_OFF_EXPIRED",
-              entity: "CompOffWorkEntry",
-              entityId: entry.id,
-              oldValue: String(balance.comp),
-              newValue: String(balance.comp - deductAmount),
-              metadata: JSON.stringify({ reason: "Cron auto-expiry", daysCredited: entry.daysCredited })
-            }
+        const deductAmount = Math.min(entry.days_credited, balance.comp)
+
+        // Mark comp-off work entry as EXPIRED
+        await supabase
+          .from('comp_off_work_entries')
+          .update({ status: 'EXPIRED', updated_at: new Date().toISOString() })
+          .eq('id', entry.id)
+
+        // Deduct from balance
+        await supabase
+          .from('leave_balances')
+          .update({ 
+            comp: balance.comp - deductAmount,
+            updated_at: new Date().toISOString()
           })
-        ])
+          .eq('id', balance.id)
+
+        // Log in audit log
+        await supabase
+          .from('audit_logs')
+          .insert({
+            user_id: entry.user_id,
+            action: "COMP_OFF_EXPIRED",
+            entity: "CompOffWorkEntry",
+            entity_id: entry.id,
+            old_value: String(balance.comp),
+            new_value: String(balance.comp - deductAmount),
+            metadata: JSON.stringify({ reason: "Cron auto-expiry", daysCredited: entry.days_credited })
+          })
+
         expiredCount++
       } else {
-        // If they have 0 balance, just mark it as USED/EXPIRED
-        await prisma.compOffWorkEntry.update({
-          where: { id: entry.id },
-          data: { status: "EXPIRED" }
-        })
+        // If they have 0 balance, just mark it as EXPIRED
+        await supabase
+          .from('comp_off_work_entries')
+          .update({ status: 'EXPIRED', updated_at: new Date().toISOString() })
+          .eq('id', entry.id)
       }
     }
 
     return NextResponse.json({ success: true, count: expiredCount })
-  } catch (err) {
+  } catch (err: any) {
     console.error("Cron Error:", err)
-    return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 })
+    return NextResponse.json({ success: false, error: err.message || "Internal Server Error" }, { status: 500 })
   }
 }

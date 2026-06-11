@@ -140,17 +140,20 @@ export const columns: ColumnDef<TeamRow>[] = [
   {
     accessorKey: "joinDate",
     header: () => <span className="text-xs font-bold">Joined</span>,
-    cell: ({ row }) => <span className="text-xs">{row.getValue("joinDate")}</span>
+    cell: ({ row }) => <span className="text-xs">{(row.original as any).displayJoinDate}</span>
   },
   {
     accessorKey: "probationEndDate",
     header: () => <span className="text-xs font-bold">Probation End</span>,
-    cell: ({ row }) => <span className="text-xs text-amber-600">{row.getValue("probationEndDate") || "—"}</span>
+    cell: ({ row }) => {
+      const date = row.getValue("probationEndDate") as string
+      return <span className="text-xs text-amber-600">{date ? new Date(date).toLocaleDateString() : "—"}</span>
+    }
   },
   {
     accessorKey: "lastWorkingDay",
     header: () => <span className="text-xs font-bold">LWD</span>,
-    cell: ({ row }) => <span className="text-xs text-red-500 font-medium">{row.getValue("lastWorkingDay") || "—"}</span>
+    cell: ({ row }) => <span className="text-xs text-red-500 font-medium">{(row.original as any).displayLwd}</span>
   },
   {
     id: "actions",

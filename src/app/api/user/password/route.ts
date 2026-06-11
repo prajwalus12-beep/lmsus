@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import bcrypt from 'bcryptjs'
-
-const prisma = new PrismaClient()
+import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -18,25 +13,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email }
+  const supabase = await getSupabaseServer()
+
+  // Verify old password by signing in
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: session.user.email,
+    password: oldPassword
   })
 
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 })
-  }
-
-  const passwordMatch = await bcrypt.compare(oldPassword, user.password)
-  if (!passwordMatch) {
+  if (signInError) {
     return NextResponse.json({ error: 'Incorrect old password' }, { status: 400 })
   }
 
-  const hashedNewPassword = await bcrypt.hash(newPassword, 10)
-
-  await prisma.user.update({
-    where: { email: session.user.email },
-    data: { password: hashedNewPassword }
+  // Update password in Supabase Auth
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: newPassword
   })
+
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true, message: 'Password updated successfully' })
 }

@@ -1,10 +1,9 @@
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { getServerSession } from '@/lib/supabaseServer'
 import { redirect } from 'next/navigation'
 import { HolidaysClient } from './HolidaysClient'
 
 export default async function HolidaysPage() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   if (!session?.user) redirect('/login')
 
   const sessionUser = session.user as any

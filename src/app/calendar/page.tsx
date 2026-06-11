@@ -1,51 +1,49 @@
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { PrismaClient } from '@prisma/client'
+import { getServerSession, getSupabaseServer } from '@/lib/supabaseServer'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { redirect } from 'next/navigation'
 import { CalendarClient } from './CalendarClient'
-
-const prisma = new PrismaClient()
+import { getSystemDate } from '@/lib/systemDate'
 
 export default async function CalendarPage() {
-  const session = await getServerSession(authOptions)
-  
+  const session = await getServerSession()
+  if (!session?.user) redirect('/login')
+
   const sessionUser = session?.user as any;
-  const isAdmin = sessionUser?.role === 'ADMIN';
+  const sysDate = await getSystemDate()
 
-  const whereClause: any = {
-    status: { in: ['HR_APPROVED', 'L1_APPROVED'] }
-  };
+  // Rule 27: Employees can view a read-only team calendar showing all approved leaves.
+  // Use supabaseAdmin to ensure visibility of all approved leaves regardless of RLS
+  const [{ data: requests }, { data: holidays }, { data: allDepts }] = await Promise.all([
+    supabaseAdmin
+      .from('leave_requests')
+      .select('*, profiles!leave_requests_user_id_fkey(name, email, departments(name))')
+      .in('status', ['HR_APPROVED', 'L1_APPROVED']),
+    supabaseAdmin.from('holidays').select('*'),
+    supabaseAdmin.from('departments').select('name').order('name')
+  ])
 
-  if (!isAdmin && sessionUser?.id) {
-    whereClause.userId = sessionUser.id;
-  }
+  const formattedRequests = (requests || []).map((req: any) => {
+    const profile = req.profiles
+    const dept = Array.isArray(profile?.departments) ? profile.departments[0] : profile?.departments
 
-  const requests = await prisma.leaveRequest.findMany({
-    where: whereClause,
-    include: {
-      user: {
-        include: { department: true }
-      }
+    return {
+      id: req.id,
+      userId: req.user_id,
+      title: `${profile?.name || 'Unknown'} - ${req.type}`,
+      email: profile?.email || '',
+      startDate: req.start_date,
+      endDate: req.end_date,
+      department: dept?.name || 'N/A',
     }
   });
 
-  const holidays = await prisma.holiday.findMany();
-
-  const formattedRequests = requests.map(req => ({
-    id: req.id,
-    title: `${req.user.name} - ${req.type}`,
-    email: req.user.email,
-    startDate: req.startDate.toISOString(),
-    endDate: req.endDate.toISOString(),
-    department: req.user.department?.name || 'N/A',
-  }));
-
-  const formattedHolidays = holidays.map(h => ({
+  const formattedHolidays = (holidays || []).map((h: any) => ({
     id: h.id,
     name: h.name,
-    date: h.date.toISOString(),
+    date: h.date,
   }));
 
-  const departments = Array.from(new Set(requests.map(r => r.user.department?.name).filter(Boolean))) as string[];
+  const departments = (allDepts || []).map(d => d.name);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto h-full flex flex-col">
@@ -59,7 +57,8 @@ export default async function CalendarPage() {
           requests={formattedRequests} 
           holidays={formattedHolidays}
           departments={departments}
-          currentUserEmail={session?.user?.email || undefined}
+          currentUserId={sessionUser?.id}
+          initialDateStr={sysDate.toISOString()}
         />
       </div>
     </div>

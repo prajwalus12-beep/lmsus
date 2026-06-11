@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useSignOut } from "@/components/providers/AuthProvider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,9 +16,10 @@ import {
   Lock, AlertTriangle, Clock, Calculator, FlaskConical,
   PlusCircle, MinusCircle, History, ShieldAlert, Eye, EyeOff, BookOpen, RefreshCcw, Shield, Loader2
 } from "lucide-react"
-import { signOut } from "next-auth/react"
+
 
 export function SettingsClient({ closures, adjustments, negativeLeaves, testMode, users, showClBalanceToEmployee, initialConfigs }: any) {
+  const signOut = useSignOut()
   const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0])
   const [isTestMode, setIsTestMode] = useState(testMode?.isTestMode ?? false)
   const [adjUserId, setAdjUserId] = useState("")
@@ -157,7 +159,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
       if (res.ok) {
         toast.success("System reset successful. Logging out...")
         setTimeout(() => {
-          signOut({ callbackUrl: "/login" })
+          signOut()  // Use Supabase signOut (global scope set in AuthProvider)
         }, 2000)
       } else {
         toast.error(data.error || "Reset failed")
@@ -167,6 +169,11 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
     } finally {
       setResetting(false)
     }
+  }
+
+  // Stub for test mode scenario simulation
+  const handleSimulate = async (scenario: string) => {
+    toast.info(`Simulating: ${scenario} (not yet implemented)`)
   }
 
   const handleRunAccrual = async () => {

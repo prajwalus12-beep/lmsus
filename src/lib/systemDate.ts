@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { getSupabaseServer } from './supabaseServer'
 
 /**
  * Returns the current system date.
@@ -9,13 +7,17 @@ const prisma = new PrismaClient()
  */
 export async function getSystemDate(): Promise<Date> {
   try {
-    const override = await prisma.systemDateOverride.findFirst({
-      where: { isTestMode: true },
-      orderBy: { createdAt: 'desc' }
-    })
+    const supabase = await getSupabaseServer()
+    const { data: override } = await supabase
+      .from('system_date_overrides')
+      .select('*')
+      .eq('is_test_mode', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-    if (override && override.overrideDate) {
-      return new Date(override.overrideDate)
+    if (override && override.override_date) {
+      return new Date(override.override_date)
     }
   } catch (error) {
     console.error('Error fetching system date override:', error)
@@ -28,19 +30,29 @@ export async function getSystemDate(): Promise<Date> {
  * Sets the system date override.
  */
 export async function setSystemDateOverride(date: Date | null, userId: string, userName: string) {
-  const oldOverride = await prisma.systemDateOverride.findFirst({
-    orderBy: { createdAt: 'desc' }
-  })
+  const supabase = await getSupabaseServer()
 
-  return await prisma.systemDateOverride.create({
-    data: {
-      isTestMode: date !== null,
-      overrideDate: date,
-      changedBy: userId,
-      changedByName: userName,
-      oldDate: oldOverride?.overrideDate ?? new Date(),
-      newDate: date,
+  const { data: oldOverride } = await supabase
+    .from('system_date_overrides')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const { data, error } = await supabase
+    .from('system_date_overrides')
+    .insert({
+      is_test_mode: date !== null,
+      override_date: date ? date.toISOString() : null,
+      changed_by: userId,
+      changed_by_name: userName,
+      old_date: oldOverride?.override_date || new Date().toISOString(),
+      new_date: date ? date.toISOString() : null,
       reason: date === null ? 'Disabled Test Mode' : 'Manual Date Override'
-    }
-  })
+    })
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  return data
 }

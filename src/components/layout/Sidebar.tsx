@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useSession, useSignOut } from "@/components/providers/AuthProvider";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -16,7 +16,6 @@ import {
   User,
   X,
 } from "lucide-react";
-import { signOut } from "next-auth/react";
 
 const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -36,6 +35,7 @@ const navItems = [
 export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () => void }) {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const signOut = useSignOut();
 
   // Basic initials logic
   const initials = session?.user?.name
@@ -45,12 +45,21 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
   const role = (session?.user as any)?.role || "EMPLOYEE";
   
   let visibleNavItems = navItems;
-  if (role === "ADMIN") {
-    visibleNavItems = navItems.filter(item => !["My Portal"].includes(item.name));
+
+  if (role === "EMPLOYEE") {
+    // Remove Admin/Manager modules for Employees
+    visibleNavItems = navItems.filter(item => 
+      ["My Portal", "Leave Ledger", "Leave Register", "Calendar", "Holidays", "Team Directory", "Profile"].includes(item.name)
+    );
   } else if (role === "MANAGER") {
-    visibleNavItems = navItems.filter(item => ["Dashboard", "My Portal", "Leave Ledger", "Requests", "Leave Register", "Calendar", "Holidays", "Team Directory", "Profile"].includes(item.name));
-  } else if (role === "EMPLOYEE") {
-    visibleNavItems = navItems.filter(item => ["My Portal", "Leave Ledger", "Leave Register", "Calendar", "Team Directory", "Profile"].includes(item.name));
+    // Managers see everything except deep settings
+    visibleNavItems = navItems.filter(item => 
+      !["Opening Balances", "Settings"].includes(item.name)
+    );
+  } else if (role === "ADMIN") {
+    // Admin sees everything except maybe personal portal (unless they want it)
+    // Most admins still need a portal to apply for their own leave
+    visibleNavItems = navItems;
   }
 
   return (
@@ -114,7 +123,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
             </div>
           </div>
           <button 
-            onClick={() => signOut({ callbackUrl: '/login' })}
+            onClick={() => signOut()}
             className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-2"
             title="Log out"
           >

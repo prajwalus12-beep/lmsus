@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { signIn } from "next-auth/react"
+import { supabase } from "@/lib/supabaseClient"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,18 +63,23 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const res = await signIn("credentials", {
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
-      redirect: false,
     })
+    
     setLoading(false)
-    if (res?.ok) {
+    if (!error && data?.user) {
       toast.success("Welcome back!")
       router.push("/")
       router.refresh()
     } else {
-      toast.error("Invalid email or password. Please try again.")
+      let msg = error?.message || "Invalid email or password. Please try again."
+      if (msg.includes("API key")) {
+        msg = "Supabase API key is invalid. Please check your .env file."
+      }
+      toast.error(msg)
     }
   }
 
@@ -88,7 +93,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex relative">
       {loading && (
         <div className="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-4">
-          <PuppyLoader />
+          <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
           <p className="text-indigo-600 font-bold animate-pulse">Running your login...</p>
         </div>
       )}

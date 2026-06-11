@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { getServerSession } from '@/lib/supabaseServer'
 import { setSystemDateOverride } from '@/lib/systemDate'
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sessionUser = session.user as any
@@ -21,8 +20,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      isTestMode: result.isTestMode, 
-      overrideDate: result.overrideDate 
+      isTestMode: result.is_test_mode, 
+      overrideDate: result.override_date 
     })
   } catch (error: any) {
     console.error('Test Mode Error:', error)

@@ -1,27 +1,36 @@
-import prisma from '@/lib/prisma'
+import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, FileText, CheckCircle2, AlertCircle } from "lucide-react"
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { redirect } from "next/navigation"
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
+  
+  if (!session) {
+    redirect("/login")
+  }
+
   if ((session?.user as any)?.role === "EMPLOYEE") {
     redirect("/portal")
   }
 
-  // 1. Parallel Database Queries
-  const [activeUsersCount, resignedUsersCount, pendingRequests, balances] = await Promise.all([
-    prisma.user.count({ where: { status: 'ACTIVE' } }),
-    prisma.user.count({ where: { status: 'RESIGNED' } }),
-    prisma.leaveRequest.count({ where: { status: 'PENDING' } }),
-    prisma.leaveBalance.findMany({ include: { user: true } })
-  ]);
+  // Use supabaseAdmin to ensure full team metrics for HR/Admin
+  const [
+    { count: activeUsersCount },
+    { count: resignedUsersCount },
+    { count: pendingRequests },
+    { data: balances }
+  ] = await Promise.all([
+    supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
+    supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('status', 'RESIGNED'),
+    supabaseAdmin.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
+    supabaseAdmin.from('leave_balances').select('pl_used, cl_used')
+  ])
   
   // 2. Calculations
-  const totalPlTaken = balances.reduce((acc, curr) => acc + curr.plUsed, 0);
-  const totalClTaken = balances.reduce((acc, curr) => acc + curr.clUsed, 0);
+  const totalPlTaken = (balances || []).reduce((acc: number, curr: any) => acc + (curr.pl_used || 0), 0);
+  const totalClTaken = (balances || []).reduce((acc: number, curr: any) => acc + (curr.cl_used || 0), 0);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -37,8 +46,8 @@ export default async function DashboardPage() {
             <Users className="h-4 w-4 text-indigo-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeUsersCount}</div>
-            <p className="text-xs text-slate-500 mt-1">{resignedUsersCount} Resigned</p>
+            <div className="text-2xl font-bold">{activeUsersCount ?? 0}</div>
+            <p className="text-xs text-slate-500 mt-1">{resignedUsersCount ?? 0} Resigned</p>
           </CardContent>
         </Card>
         <Card className="bg-white">
@@ -47,7 +56,7 @@ export default async function DashboardPage() {
             <FileText className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{pendingRequests}</div>
+            <div className="text-2xl font-bold">{pendingRequests ?? 0}</div>
             <p className="text-xs text-slate-500 mt-1">Requires approval</p>
           </CardContent>
         </Card>

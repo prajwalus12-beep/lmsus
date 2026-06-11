@@ -1,38 +1,38 @@
-import { PrismaClient } from '@prisma/client'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 import { redirect } from 'next/navigation'
 import { AuditClient } from './AuditClient'
 
-const prisma = new PrismaClient()
-
 export default async function AuditPage() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user || !['ADMIN', 'MANAGER'].includes((session.user as any).role)) {
+  const session = await getServerSession()
+  if (!session?.user) redirect('/login')
+  
+  if (!['ADMIN', 'MANAGER'].includes((session.user as any).role)) {
     redirect('/')
   }
 
-  const logs = await prisma.auditLog.findMany({
-    include: {
-      user: {
-        select: { name: true, role: true }
-      }
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 500
-  })
+  const supabase = await getSupabaseServer()
 
-  const mappedLogs = logs.map(log => ({
+  const { data: logs, error } = await supabase
+    .from('audit_logs')
+    .select('*, profiles(name, role)')
+    .order('created_at', { ascending: false })
+    .limit(500)
+
+  if (error) {
+    console.error("Error fetching audit logs:", error)
+  }
+
+  const mappedLogs = (logs || []).map((log: any) => ({
     id: log.id,
-    userName: log.user?.name || 'System',
-    userRole: log.user?.role || 'SYSTEM',
+    userName: log.profiles?.name || 'System',
+    userRole: log.profiles?.role || 'SYSTEM',
     action: log.action,
     entity: log.entity,
-    entityId: log.entityId,
-    oldValue: log.oldValue,
-    newValue: log.newValue,
+    entityId: log.entity_id,
+    oldValue: log.old_value,
+    newValue: log.new_value,
     metadata: log.metadata ? JSON.parse(log.metadata) : null,
-    createdAt: log.createdAt.toISOString()
+    createdAt: new Date(log.created_at).toISOString()
   }))
 
   return (

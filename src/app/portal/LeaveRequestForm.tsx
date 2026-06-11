@@ -16,6 +16,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
   const [documentUrl, setDocumentUrl] = useState("");
+  const [halfDay, setHalfDay] = useState("NONE");
   const [loading, setLoading] = useState(false);
 
   // Server Projected State
@@ -38,7 +39,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         const res = await fetch("/api/leave/project", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, type, startDate, endDate, isHalfDay: false })
+          body: JSON.stringify({ userId, type, startDate, endDate, isHalfDay: halfDay !== "NONE" })
         });
         const data = await res.json();
         if (data.success) {
@@ -53,7 +54,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
       }
     }
     fetchProjection();
-  }, [startDate, endDate, type, userId]);
+  }, [startDate, endDate, type, userId, halfDay]);
 
   // Use projected balances if available, otherwise fallback to current
   const targetBalances = projectedBalanceMap || balances;
@@ -99,6 +100,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         isNegative: wouldGoNegative,
         negativeAmount: wouldGoNegative ? Math.abs(netBalance) : 0,
         attachmentUrl: documentUrl,
+        halfDay
       })
       
       if (wouldGoNegative) {
@@ -106,7 +108,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
       } else {
         toast.success("Leave request submitted successfully")
       }
-      setType(""); setStartDate(""); setEndDate(""); setReason(""); setDocumentUrl("");
+      setType(""); setStartDate(""); setEndDate(""); setReason(""); setDocumentUrl(""); setHalfDay("NONE");
       setProjectedDays(0);
       setProjectedBalanceMap(null);
     } catch (err) {
@@ -136,7 +138,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         </div>
         <div className="space-y-2">
           <Label htmlFor="halfDay">Half Day</Label>
-          <Select defaultValue="NONE">
+          <Select value={halfDay} onValueChange={setHalfDay}>
             <SelectTrigger id="halfDay">
               <SelectValue placeholder="Select half day" />
             </SelectTrigger>

@@ -45,10 +45,6 @@ export function PuppyLoader() {
           animation: run 0.3s ease-in-out infinite reverse;
         }
       `}</style>
-      <div className="text-center">
-        <h3 className="text-lg font-bold text-indigo-600">Puppy is fetching...</h3>
-        <p className="text-sm text-slate-500">Wait a tail-wagging second!</p>
-      </div>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import prisma from "@/lib/prisma"
+import { getSupabaseServer } from "@/lib/supabaseServer"
 import { calculateRequestedDays } from "@/lib/leaveCalculator"
 
 export async function POST(request: Request) {
@@ -11,18 +11,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    const supabase = await getSupabaseServer()
     const start = new Date(startDate)
     const end = new Date(endDate)
 
+    const yearStart = `${start.getFullYear()}-01-01`
+    const yearEnd = `${start.getFullYear()}-12-31`
+
     // 1. Fetch holidays and config in parallel
-    const [holidays, sandwichConfig] = await Promise.all([
-      prisma.holiday.findMany({
-        where: { date: { gte: new Date(start.getFullYear(), 0, 1), lte: new Date(start.getFullYear(), 11, 31) } }
-      }),
-      prisma.systemConfig.findUnique({ where: { key: "weekend_sandwich_rule" } })
+    const [{ data: holidays }, { data: sandwichConfig }] = await Promise.all([
+      supabase.from('holidays').select('*').gte('date', yearStart).lte('date', yearEnd),
+      supabase.from('system_configs').select('value').eq('key', 'weekend_sandwich_rule').single()
     ]);
 
-    const holidayDates = new Set(holidays.map(h => h.date.toISOString().split('T')[0]))
+    const holidayDates = new Set((holidays || []).map((h: any) => h.date.split('T')[0]))
     const isSandwichEnabled = sandwichConfig?.value === "true"
 
     // 2. Calculate days (Now FAST synchronous)
@@ -36,11 +38,21 @@ export async function POST(request: Request) {
     )
 
     // 3. Simple projection (Monthly PL accrual)
-    const balance = await prisma.leaveBalance.findUnique({ where: { userId } })
+    const { data: balance } = await supabase
+      .from('leave_balances')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
     let projectedPl = balance?.pl || 0
     
     // Monthly accrual logic (Simplified for projection)
-    const rateConfig = await prisma.systemConfig.findUnique({ where: { key: 'ACCRUAL_RATE_PL' } })
+    const { data: rateConfig } = await supabase
+      .from('system_configs')
+      .select('value')
+      .eq('key', 'ACCRUAL_RATE_PL')
+      .single()
+
     const rate = parseFloat(rateConfig?.value || "1.5")
     
     const today = new Date()

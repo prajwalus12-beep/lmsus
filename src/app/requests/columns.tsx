@@ -98,6 +98,7 @@ export const columns: ColumnDef<LeaveRequestRow>[] = [
   },
   {
     id: "actions",
+    header: "Actions",
     cell: ({ row }) => {
       const req = row.original
 
@@ -182,6 +183,7 @@ export const compOffColumns: ColumnDef<any>[] = [
   },
   {
     id: "actions",
+    header: "Actions",
     cell: ({ row }) => {
       const co = row.original
 

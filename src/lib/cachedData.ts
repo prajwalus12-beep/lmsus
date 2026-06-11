@@ -1,15 +1,19 @@
 import { unstable_cache } from 'next/cache'
-import prisma from './prisma'
+import { supabaseAdmin } from './supabaseAdmin'
 
 // 1. Cache Holidays (1 hour)
+// NOTE: unstable_cache cannot use cookies() / getSupabaseServer() — use supabaseAdmin instead.
 export const getCachedHolidays = unstable_cache(
   async (year: number) => {
-    const startOfYear = new Date(year, 0, 1)
-    const endOfYear = new Date(year, 11, 31)
-    return prisma.holiday.findMany({
-      where: { date: { gte: startOfYear, lte: endOfYear } },
-      orderBy: { date: 'asc' }
-    })
+    const startOfYear = `${year}-01-01T00:00:00.000Z`
+    const endOfYear = `${year}-12-31T23:59:59.999Z`
+    const { data } = await supabaseAdmin
+      .from('holidays')
+      .select('*')
+      .gte('date', startOfYear)
+      .lte('date', endOfYear)
+      .order('date', { ascending: true })
+    return data || []
   },
   ['holidays-cache'],
   { revalidate: 3600, tags: ['holidays'] }
@@ -18,7 +22,12 @@ export const getCachedHolidays = unstable_cache(
 // 2. Cache System Config (1 hour)
 export const getCachedConfig = unstable_cache(
   async (key: string) => {
-    return prisma.systemConfig.findUnique({ where: { key } })
+    const { data } = await supabaseAdmin
+      .from('system_configs')
+      .select('*')
+      .eq('key', key)
+      .maybeSingle()
+    return data || null
   },
   ['system-config-cache'],
   { revalidate: 3600, tags: ['config'] }
@@ -27,7 +36,11 @@ export const getCachedConfig = unstable_cache(
 // 3. Cache Department List
 export const getCachedDepartments = unstable_cache(
   async () => {
-    return prisma.department.findMany({ orderBy: { name: 'asc' } })
+    const { data } = await supabaseAdmin
+      .from('departments')
+      .select('*')
+      .order('name', { ascending: true })
+    return data || []
   },
   ['departments-cache'],
   { revalidate: 3600, tags: ['departments'] }

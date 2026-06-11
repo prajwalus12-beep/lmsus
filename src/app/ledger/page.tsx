@@ -1,15 +1,13 @@
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { PrismaClient } from '@prisma/client'
+import { getServerSession } from '@/lib/supabaseServer'
+import { getSupabaseServer } from '@/lib/supabaseServer'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { LedgerClient } from './LedgerClient'
 import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
-const prisma = new PrismaClient()
-
 export default async function LedgerPage() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   if (!session?.user) redirect('/login')
 
   const sessionUser = session.user as any
@@ -18,71 +16,77 @@ export default async function LedgerPage() {
   const year = new Date().getFullYear()
   const isHR = role === 'ADMIN'
 
-  const startOfYear = new Date(`${year}-01-01T00:00:00.000Z`)
-  const endOfYear = new Date(`${year}-12-31T23:59:59.999Z`)
+  const supabase = await getSupabaseServer()
 
-  const allUsers = isHR
-    ? await prisma.user.findMany({
-        select: { id: true, name: true, department: { select: { name: true } } },
-        where: {
-          status: { in: ['ACTIVE', 'NOTICE_PERIOD'] },
-          role: { not: 'ADMIN' },
-        },
-        orderBy: { name: 'asc' },
-      })
-    : []
+  const startOfYear = `${year}-01-01T00:00:00.000Z`
+  const endOfYear = `${year}-12-31T23:59:59.999Z`
+
+  let allUsers: any[] = []
+  if (isHR) {
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, departments(name)')
+      .in('status', ['ACTIVE', 'NOTICE_PERIOD'])
+      .neq('role', 'ADMIN')
+      .order('name', { ascending: true })
+    allUsers = (data || []).map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      department: { name: (Array.isArray(u.departments) ? u.departments[0]?.name : u.departments?.name) || 'N/A' }
+    }))
+  }
 
   let targetUserId = userId
   if (isHR && allUsers.length > 0) {
     targetUserId = allUsers[0].id
   }
 
-  const [clBalanceSetting, user, ledgerEntries] = await Promise.all([
-    prisma.systemConfig.findUnique({
-      where: { key: 'SHOW_CL_BALANCE_TO_EMPLOYEE' },
-    }),
-    prisma.user.findUnique({
-      where: { id: targetUserId },
-      include: { balances: true, department: true },
-    }),
-    prisma.leaveLedgerEntry.findMany({
-      where: { 
-        userId: targetUserId, 
-        date: { gte: startOfYear, lte: endOfYear } 
-      },
-      orderBy: [
-        { date: 'asc' },
-        { createdAt: 'asc' }
-      ]
-    })
+  const [
+    { data: clBalanceSetting },
+    { data: profile },
+    { data: ledgerEntries }
+  ] = await Promise.all([
+    supabaseAdmin.from('system_configs').select('value').eq('key', 'SHOW_CL_BALANCE_TO_EMPLOYEE').single(),
+    supabaseAdmin.from('profiles').select('id, name, departments(name), leave_balances(*)').eq('id', targetUserId).single(),
+    supabaseAdmin.from('leave_ledger_entries').select('*')
+      .eq('user_id', targetUserId)
+      .gte('date', startOfYear)
+      .lte('date', endOfYear)
+      .order('date', { ascending: true })
+      .order('created_at', { ascending: true })
   ])
 
-  if (!user || !user.balances) {
+  if (!profile || !profile.leave_balances) {
     return <div className="p-8 text-red-600">User balance data not found. Please contact HR.</div>
   }
 
+  // Supabase joins can return arrays even for 1:1 relations
+  const balances = Array.isArray(profile.leave_balances) ? profile.leave_balances[0] : profile.leave_balances
+  const dept = Array.isArray(profile.departments) ? profile.departments[0] : profile.departments
+  const deptName = dept?.name || 'N/A'
+  
   const showClBalanceToEmployee = clBalanceSetting?.value === 'true'
   const showClBalance = isHR || showClBalanceToEmployee
 
-  const entries = ledgerEntries.map(e => ({
+  const entries = (ledgerEntries || []).map((e: any) => ({
     ...e,
     id: e.id,
-    date: e.date.toISOString(),
+    date: e.date,
     type: e.type,
     description: e.description,
     days: e.days,
-    startDate: e.startDate?.toISOString() || null,
-    endDate: e.endDate?.toISOString() || null,
-    clDebit: e.clDebit,
-    plDebit: e.plDebit,
-    clCredit: e.clCredit,
-    plCredit: e.plCredit,
-    clBalance: e.clBalance,
-    plBalance: e.plBalance,
-    isOpening: e.isOpening,
-    isAdjustment: e.isAdjustment,
-    isClosing: e.isClosing,
-    workingDays: e.workingDays
+    startDate: e.start_date || null,
+    endDate: e.end_date || null,
+    clDebit: e.cl_debit,
+    plDebit: e.pl_debit,
+    clCredit: e.cl_credit,
+    plCredit: e.pl_credit,
+    clBalance: e.cl_balance,
+    plBalance: e.pl_balance,
+    isOpening: e.is_opening,
+    isAdjustment: e.is_adjustment,
+    isClosing: e.is_closing,
+    workingDays: e.working_days
   }))
 
   return (
@@ -96,14 +100,14 @@ export default async function LedgerPage() {
       <LedgerClient
         initialEntries={entries as any}
         initialUser={{
-          id: user.id,
-          name: user.name,
-          department: user.department?.name || 'N/A',
-          openingCl: user.balances.openingCl,
-          openingPl: user.balances.openingPl,
+          id: profile.id,
+          name: profile.name,
+          department: deptName,
+          openingCl: balances?.opening_cl || 0,
+          openingPl: balances?.opening_pl || 0,
         }}
-        currentCl={user.balances.cl}
-        currentPl={user.balances.pl}
+        currentCl={balances?.cl || 0}
+        currentPl={balances?.pl || 0}
         allUsers={allUsers}
         role={role}
         year={year}

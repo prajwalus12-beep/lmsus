@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { 
   format, 
   startOfMonth, 
@@ -15,26 +15,54 @@ import {
   startOfYear,
   endOfYear,
   eachMonthOfInterval,
-  isSameYear,
   addDays,
   subDays
 } from "date-fns"
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List as ListIcon, Grid3X3, Layers } from "lucide-react"
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 
-export function CalendarClient({ requests, holidays, departments, currentUserEmail }: { 
+export function CalendarClient({ requests: allRequests, holidays, departments, initialDateStr }: { 
   requests: any[], 
   holidays: any[], 
   departments: string[],
-  currentUserEmail?: string 
+  currentUserId?: string,
+  initialDateStr?: string
 }) {
-  const [currentDate, setCurrentDate] = useState(new Date("2026-06-01"))
+  const [currentDate, setCurrentDate] = useState(initialDateStr ? new Date(initialDateStr) : new Date())
   const [view, setView] = useState("month")
   const [filterDept, setFilterDept] = useState<string>("ALL")
   const [onlyMine, setOnlyMine] = useState(false)
+
+  // My leaves fetched from the server-side API (no client ID matching needed)
+  const [myLeaves, setMyLeaves] = useState<any[] | null>(null)
+  const [myLeavesLoading, setMyLeavesLoading] = useState(false)
+  const [myLeavesError, setMyLeavesError] = useState<string | null>(null)
+
+  // Eagerly fetch my leaves on mount so data is ready when filter is toggled
+  useEffect(() => {
+    const fetchMyLeaves = async () => {
+      setMyLeavesLoading(true)
+      setMyLeavesError(null)
+      try {
+        const res = await fetch('/api/leave/my-calendar')
+        if (!res.ok) {
+          const err = await res.json()
+          setMyLeavesError(err.error || 'Failed to load your leaves')
+          return
+        }
+        const data = await res.json()
+        setMyLeaves(data.requests || [])
+      } catch (e: any) {
+        setMyLeavesError(e.message)
+      } finally {
+        setMyLeavesLoading(false)
+      }
+    }
+    fetchMyLeaves()
+  }, [])
 
   const next = () => {
     if (view === "month") setCurrentDate(addMonths(currentDate, 1))
@@ -50,11 +78,27 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
     else if (view === "year") setCurrentDate(new Date(currentDate.getFullYear() - 1, 0, 1))
   }
 
-  const filteredRequests = requests.filter(r => {
-    const deptMatch = filterDept === "ALL" || r.department === filterDept
-    const mineMatch = !onlyMine || r.email === currentUserEmail
-    return deptMatch && mineMatch
-  })
+  // Active dataset:
+  // - onlyMine=false → empty (no leaves shown by default)
+  // - onlyMine=true  → server-fetched leaves for current user only
+  const activeRequests = onlyMine ? (myLeaves ?? []) : []
+
+  const filteredRequests = useMemo(() => {
+    return activeRequests.filter(r => {
+      return filterDept === "ALL" || r.department === filterDept
+    })
+  }, [activeRequests, filterDept])
+
+  const getDayRequests = (day: Date) => {
+    return filteredRequests.filter(r => {
+      const dayTs = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
+      const s = new Date(r.startDate)
+      const e = new Date(r.endDate)
+      const startTs = new Date(s.getFullYear(), s.getMonth(), s.getDate()).getTime()
+      const endTs = new Date(e.getFullYear(), e.getMonth(), e.getDate()).getTime()
+      return dayTs >= startTs && dayTs <= endTs
+    })
+  }
 
   const renderMonthGrid = (date: Date) => {
     const start = startOfMonth(date)
@@ -63,7 +107,7 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
     const startOffset = start.getDay()
 
     return (
-      <div className="grid grid-cols-7 gap-px bg-slate-200 border rounded-lg overflow-hidden bg-white">
+      <div className="grid grid-cols-7 gap-px bg-slate-200 border rounded-lg overflow-hidden">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
           <div key={day} className="bg-slate-50 py-2 text-center text-xs font-semibold text-slate-500 border-b">
             {day}
@@ -74,21 +118,36 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
         ))}
         {days.map((day, i) => {
           const isHoliday = holidays.find(h => isSameDay(new Date(h.date), day))
-          const dayRequests = filteredRequests.filter(r => {
-            const s = new Date(r.startDate); const e = new Date(r.endDate)
-            return day >= s && day <= e
-          })
+          const dayRequests = getDayRequests(day)
+          const isToday = isSameDay(day, new Date())
           return (
-            <div key={i} className={`min-h-[80px] bg-white p-1.5 border-b border-r ${!isSameMonth(day, date) ? 'text-slate-300' : ''}`}>
-              <div className="text-xs font-medium mb-1">{format(day, "d")}</div>
+            <div
+              key={i}
+              className={`min-h-[80px] bg-white p-1.5 border-b border-r ${
+                !isSameMonth(day, date) ? "text-slate-300" : ""
+              } ${isToday ? "bg-indigo-50/50" : ""}`}
+            >
+              <div className={`text-xs font-medium mb-1 w-5 h-5 flex items-center justify-center rounded-full ${
+                isToday ? "bg-indigo-600 text-white" : ""
+              }`}>
+                {format(day, "d")}
+              </div>
               {isHoliday && (
                 <div className="bg-red-50 text-red-600 text-[10px] px-1 py-0.5 rounded border border-red-100 truncate mb-0.5" title={isHoliday.name}>
                   H: {isHoliday.name}
                 </div>
               )}
               {dayRequests.map(req => (
-                <div key={req.id} className="bg-indigo-50 text-indigo-700 text-[10px] px-1 py-0.5 rounded truncate border border-indigo-100 mb-0.5" title={req.title}>
-                  {req.title}
+                <div
+                  key={req.id}
+                  className={`text-[10px] px-1 py-0.5 rounded truncate border mb-0.5 ${
+                    onlyMine
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                      : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                  }`}
+                  title={req.title}
+                >
+                  {req.title.split(" - ")[1] || req.title}
                 </div>
               ))}
             </div>
@@ -98,8 +157,13 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
     )
   }
 
+  const handleToggleMine = () => {
+    setOnlyMine(prev => !prev)
+  }
+
   return (
     <div className="flex flex-col h-full space-y-4">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <h2 className="text-xl font-bold text-slate-800">
@@ -125,6 +189,7 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
         </div>
       </div>
 
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-slate-600">Department:</span>
@@ -136,21 +201,33 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
             </SelectContent>
           </Select>
         </div>
+
         <div className="flex items-center gap-2 ml-auto">
-          <Button 
-            variant={onlyMine ? "default" : "outline"} 
-            size="sm" 
-            onClick={() => setOnlyMine(!onlyMine)}
-            className={onlyMine ? "bg-indigo-600" : ""}
+          {myLeavesError && (
+            <span className="text-xs text-red-500 font-medium">⚠️ {myLeavesError}</span>
+          )}
+          <Button
+            variant={onlyMine ? "default" : "outline"}
+            size="sm"
+            onClick={handleToggleMine}
+            className={onlyMine ? "bg-indigo-600 hover:bg-indigo-700" : ""}
+            disabled={myLeavesLoading}
           >
-            {onlyMine ? "Showing Only My Leaves" : "Show Only My Leaves"}
+            {myLeavesLoading ? (
+              <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Loading...</>
+            ) : onlyMine ? (
+              "✓ Showing Only My Leaves"
+            ) : (
+              "Show Only My Leaves"
+            )}
           </Button>
         </div>
       </div>
 
+      {/* Calendar Views */}
       <div className="flex-1 overflow-y-auto">
         {view === "month" && renderMonthGrid(currentDate)}
-        
+
         {view === "year" && (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-8">
             {eachMonthOfInterval({
@@ -172,12 +249,9 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
               end: endOfWeek(currentDate)
             }).map((day, idx) => {
               const isHoliday = holidays.find(h => isSameDay(new Date(h.date), day))
-              const dayRequests = filteredRequests.filter(r => {
-                const s = new Date(r.startDate); const e = new Date(r.endDate)
-                return day >= s && day <= e
-              })
+              const dayRequests = getDayRequests(day)
               return (
-                <div key={idx} className={`border rounded-lg p-3 min-h-[400px] bg-white ${isSameDay(day, new Date()) ? 'border-indigo-500 ring-1 ring-indigo-500' : ''}`}>
+                <div key={idx} className={`border rounded-lg p-3 min-h-[400px] bg-white ${isSameDay(day, new Date()) ? "border-indigo-500 ring-1 ring-indigo-500" : ""}`}>
                   <div className="text-sm font-bold border-b pb-2 mb-3">
                     <div className="text-slate-500 uppercase text-[10px]">{format(day, "eee")}</div>
                     <div className="text-lg">{format(day, "d")}</div>
@@ -189,7 +263,7 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
                   )}
                   <div className="space-y-2">
                     {dayRequests.map(req => (
-                      <div key={req.id} className="bg-indigo-50 text-indigo-800 text-xs p-2 rounded border border-indigo-100">
+                      <div key={req.id} className={`text-xs p-2 rounded border ${onlyMine ? "bg-emerald-50 text-emerald-800 border-emerald-100" : "bg-indigo-50 text-indigo-800 border-indigo-100"}`}>
                         <div className="font-bold">{req.title.split(" - ")[0]}</div>
                         <div className="text-[10px] opacity-70">{req.title.split(" - ")[1]}</div>
                       </div>
@@ -219,25 +293,24 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
                     <CalendarIcon className="w-5 h-5" />
                     <span className="font-bold">{h.name}</span>
                   </div>
-                )) || <p className="text-slate-400 italic text-sm">None</p>}
+                ))}
+                {holidays.filter(h => isSameDay(new Date(h.date), currentDate)).length === 0 && (
+                  <p className="text-slate-400 italic text-sm">None</p>
+                )}
               </section>
 
               <section>
                 <h4 className="text-sm font-bold text-slate-400 mb-3 uppercase tracking-tight">Approved Leaves</h4>
                 <div className="space-y-3">
-                  {filteredRequests.filter(r => {
-                    const s = new Date(r.startDate); const e = new Date(r.endDate)
-                    return currentDate >= s && currentDate <= e
-                  }).map(req => (
+                  {getDayRequests(currentDate).map(req => (
                     <div key={req.id} className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                       <div className="font-bold text-slate-800">{req.title}</div>
                       <div className="text-sm text-slate-500">{req.department}</div>
                     </div>
                   ))}
-                  {filteredRequests.filter(r => {
-                    const s = new Date(r.startDate); const e = new Date(r.endDate)
-                    return currentDate >= s && currentDate <= e
-                  }).length === 0 && <p className="text-slate-400 italic text-sm">No leaves today.</p>}
+                  {getDayRequests(currentDate).length === 0 && (
+                    <p className="text-slate-400 italic text-sm">No leaves today.</p>
+                  )}
                 </div>
               </section>
             </div>
@@ -269,11 +342,19 @@ export function CalendarClient({ requests, holidays, departments, currentUserEma
                     <td className="px-6 py-4 font-medium text-slate-800">{req.title.split(" - ")[0]}</td>
                     <td className="px-6 py-4"><Badge variant="outline">{req.title.split(" - ")[1]}</Badge></td>
                     <td className="px-6 py-4">
-                      {format(new Date(req.startDate), "do MMM")} - {format(new Date(req.endDate), "do MMM")}
+                      {format(new Date(req.startDate), "do MMM")} – {format(new Date(req.endDate), "do MMM")}
                     </td>
                     <td className="px-6 py-4 text-slate-500">{req.department}</td>
                   </tr>
                 ))}
+                {filteredRequests.filter(r => isSameMonth(new Date(r.startDate), currentDate)).length === 0 &&
+                  holidays.filter(h => isSameMonth(new Date(h.date), currentDate)).length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">
+                      No leaves or holidays this month.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

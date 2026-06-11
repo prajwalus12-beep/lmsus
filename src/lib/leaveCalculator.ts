@@ -15,11 +15,17 @@ export function calculateRequestedDays(
   const start = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()))
   const end = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()))
 
+  // Rule 37 Check: If CL and duration > 4 calendar days, convert to PL
+  const calendarDuration = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  const effectiveType = (leaveType === "CL" && calendarDuration > 4) ? "PL" : leaveType
+  const convertedToPl = (leaveType === "CL" && effectiveType === "PL")
+
   let days = 0
   let currentDate = new Date(start)
 
   const isWeekend = (d: Date) => d.getUTCDay() === 0 || d.getUTCDay() === 6
-  const applySandwich = leaveType === "CL" && isSandwichEnabled
+  // Rule: PL and SL never have sandwich. CL has it if enabled.
+  const applySandwich = effectiveType === "CL" && isSandwichEnabled
 
   while (currentDate <= end) {
     const ds = currentDate.toISOString().split('T')[0]
@@ -38,5 +44,5 @@ export function calculateRequestedDays(
     currentDate.setUTCDate(currentDate.getUTCDate() + 1)
   }
 
-  return { days, convertedToPl: false } // Auto-convert logic moved to server actions
+  return { days, convertedToPl, effectiveType }
 }

@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
 
-const prisma = new PrismaClient()
-
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sessionUser = session.user as any
@@ -22,56 +18,69 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  const supabase = await getSupabaseServer()
+
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Create the adjustment record
-      const adjustment = await tx.leaveBalanceAdjustment.create({
-        data: {
-          userId,
-          leaveType,
-          amount: parseFloat(amount),
-          adjustmentType,
-          reason,
-          effectiveYear: parseInt(effectiveYear),
-          enteredBy: sessionUser.id,
-          enteredByName: sessionUser.name,
-        },
+    // 1. Create the adjustment record
+    const { data: adjustment, error: adjError } = await supabase
+      .from('leave_balance_adjustments')
+      .insert({
+        user_id: userId,
+        leave_type: leaveType,
+        amount: parseFloat(amount),
+        adjustment_type: adjustmentType,
+        reason,
+        effective_year: parseInt(effectiveYear),
+        entered_by: sessionUser.id,
+        entered_by_name: sessionUser.name
+      })
+      .select('*')
+      .single()
+
+    if (adjError || !adjustment) throw new Error(adjError?.message || "Failed to create adjustment")
+
+    // 2. Fetch live balance
+    const { data: balance, error: balError } = await supabase
+      .from('leave_balances')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (balError || !balance) throw new Error(balError?.message || 'User balance record not found')
+
+    const typeKey = leaveType.toLowerCase() // pl, cl, sl, comp
+    const currentVal = balance[typeKey] || 0
+
+    // 3. Update live balance
+    const { error: updateBalError } = await supabase
+      .from('leave_balances')
+      .update({
+        [typeKey]: currentVal + parseFloat(amount),
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+
+    if (updateBalError) throw new Error(updateBalError.message)
+
+    // 4. Create Audit Log
+    const { error: logError } = await supabase
+      .from('audit_logs')
+      .insert({
+        user_id: sessionUser.id,
+        action: 'ADJUSTMENT_MADE',
+        entity: 'LeaveBalanceAdjustment',
+        entity_id: adjustment.id,
+        new_value: String(currentVal + parseFloat(amount)),
+        old_value: String(currentVal),
+        metadata: JSON.stringify({ targetUserId: userId, leaveType, amount, reason })
       })
 
-      // 2. Update the live balance
-      const balance = await tx.leaveBalance.findUnique({ where: { userId } })
-      if (!balance) throw new Error('User balance record not found')
-
-      const typeKey = leaveType.toLowerCase() // pl, cl, sl, comp
-      const currentVal = (balance as any)[typeKey] || 0
-
-      await tx.leaveBalance.update({
-        where: { userId },
-        data: {
-          [typeKey]: currentVal + parseFloat(amount),
-        },
-      })
-
-      // 3. Create Audit Log
-      await tx.auditLog.create({
-        data: {
-          userId: sessionUser.id,
-          action: 'ADJUSTMENT_MADE',
-          entity: 'LeaveBalanceAdjustment',
-          entityId: adjustment.id,
-          newValue: String(currentVal + parseFloat(amount)),
-          oldValue: String(currentVal),
-          metadata: JSON.stringify({ targetUserId: userId, leaveType, amount, reason }),
-        },
-      })
-
-      return adjustment
-    })
+    if (logError) console.error("Error creating adjustment audit log:", logError)
 
     // Keep ledger in sync
     await syncUserLedger(userId, parseInt(effectiveYear))
 
-    return NextResponse.json({ success: true, adjustment: result })
+    return NextResponse.json({ success: true, adjustment })
   } catch (error: any) {
     console.error('Adjustment Error:', error)
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

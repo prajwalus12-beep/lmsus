@@ -1,41 +1,64 @@
-import prisma from '@/lib/prisma'
+import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { TeamDataTable } from './TeamDataTable'
 import { columns } from './columns'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
 export default async function TeamPage() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   if (!session?.user) redirect('/login')
 
-  const users = await prisma.user.findMany({
-    include: {
-      department: true,
-      balances: true,
-    },
-    where: {
-      role: { not: 'ADMIN' }, // De-link HR accounts from employee directory
-    },
-    orderBy: { name: 'asc' },
-  });
+  // Restrict Team Directory to ADMIN and MANAGER
+  if (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER') {
+    return <div className="p-8 text-center text-red-500">Access Denied: You do not have permission to view the Team Directory.</div>
+  }
 
-  const formattedData = users.map(user => ({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    department: user.department?.name || 'N/A',
-    departmentId: user.departmentId || '',
-    plBalance: user.balances?.pl || 0,
-    clSlBalance: (user.balances?.cl || 0) + (user.balances?.sl || 0),
-    joinDate: user.joinDate.toLocaleDateString(),
-    lastWorkingDay: user.lastWorkingDay ? user.lastWorkingDay.toLocaleDateString() : null,
-    probationEndDate: user.probationEndDate ? user.probationEndDate.toISOString().split('T')[0] : null,
-  }));
+  // Use supabaseAdmin to ensure full visibility for HR/Managers
+  // Fetch users and balances separately and join them to be 100% safe
+  const [
+    { data: users, error: uError },
+    { data: allBalances, error: bError }
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('*, departments(name)')
+      .neq('role', 'ADMIN')
+      .order('name', { ascending: true }),
+    supabaseAdmin
+      .from('leave_balances')
+      .select('*')
+  ])
+
+  if (uError) console.error("Error fetching users:", uError)
+  if (bError) console.error("Error fetching balances:", bError)
+
+  const balanceMap = new Map()
+  if (allBalances) {
+    allBalances.forEach(b => balanceMap.set(b.user_id, b))
+  }
+
+  const formattedData = (users || []).map((user: any) => {
+    const balance = balanceMap.get(user.id) || null
+    
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      department: user.departments?.name || 'N/A',
+      departmentId: user.department_id || '',
+      plBalance: balance?.pl ?? 0,
+      clSlBalance: (balance?.cl || 0) + (balance?.sl || 0),
+      joinDate: user.join_date, 
+      lastWorkingDay: user.last_working_day, 
+      probationEndDate: user.probation_end_date, 
+      displayJoinDate: user.join_date ? new Date(user.join_date).toLocaleDateString() : '—',
+      displayLwd: user.last_working_day ? new Date(user.last_working_day).toLocaleDateString() : '—',
+    }
+  })
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

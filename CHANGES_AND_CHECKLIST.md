@@ -1,4 +1,4 @@
-# HRMS / Leave Management System – Consolidated Fixes & Enhancements
+﻿# HRMS / Leave Management System – Consolidated Fixes & Enhancements
 
 ## 1. Summary of Changes
 
@@ -58,8 +58,10 @@ The **Leave Ledger** and **My Portal** now load instantly. Because the system re
 | **6.0** | Opening Balance Screen| ✅ Completed | High | Done | New management UI and API implemented. |
 | **7.0** | Leave Register Screen | ✅ Completed | Medium | Done | Transaction log with approver details added. |
 | **8.0** | Data Inconsistency | ✅ Completed | High | Done | Verified Amit Kumar and filtering logic. |
-| **9.1** | Probation End Date | ✅ Completed | Low | Done | Added to schema and Team Directory UI. |
-| **9.2** | Pro Rate Leaves | ✅ Completed | Low | Done | Verified and documented existing logic. |
+| 9.1 | Probation End Date | ✅ Completed | Low | Done | Added to schema and Team Directory UI. |
+| 9.2 | Pro Rate Leaves | ✅ Completed | Low | Done | Verified and documented existing logic. |
+| **10.0** | Supabase Migration | ✅ Completed | Critical| Done | Auth & DB migrated to Supabase. Prisma usage minimized. |
+| **11.0** | Admin Panel (Python) | ✅ Completed | Medium | Done | Streamlit panel implemented in /admin_panel. |
 
 ---
 

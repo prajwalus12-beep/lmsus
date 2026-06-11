@@ -1,51 +1,67 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import bcrypt from 'bcryptjs'
-
-const prisma = new PrismaClient()
+﻿import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from '@/lib/supabaseServer'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   const sessionUser = session?.user as any
   if (sessionUser?.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { name, email, password, role, departmentId, joinDate, openingPl, openingCl } = await req.json()
 
-  // Check if user exists
-  const existing = await prisma.user.findUnique({ where: { email } })
-  if (existing) return NextResponse.json({ error: 'User already exists' }, { status: 400 })
-
-  const hashedPassword = await bcrypt.hash(password || 'Unique@123', 10)
-
-  const newUser = await prisma.user.create({
-    data: {
-      name,
-      email,
-      password: hashedPassword,
-      role: role || 'EMPLOYEE',
-      departmentId,
-      joinDate: joinDate ? new Date(joinDate) : new Date(),
-      balances: {
-        create: {
-          year: new Date().getFullYear(),
-          openingPl: parseFloat(openingPl) || 0,
-          openingCl: parseFloat(openingCl) || 0,
-          pl: parseFloat(openingPl) || 0,
-          cl: parseFloat(openingCl) || 0,
-          sl: 7,
-          comp: 0,
-          lop: 0,
-          plAccrued: 0,
-          plUsed: 0,
-          clUsed: 0,
-          slUsed: 0,
-          plCarryForward: 0,
-        }
-      }
-    }
+  // 1. Create User in Supabase Auth
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password: password || 'Unique@123',
+    email_confirm: true,
+    user_metadata: { name, role: role || "EMPLOYEE" }
   })
 
-  return NextResponse.json(newUser)
+  if (authError) {
+    return NextResponse.json({ error: authError.message }, { status: 400 })
+  }
+
+  const userId = authData.user.id
+
+  // 2. Update the profile record (created by trigger) with department and joinDate
+  const { error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .update({
+      department_id: departmentId || null,
+      join_date: joinDate ? new Date(joinDate).toISOString() : new Date().toISOString(),
+      status: 'ACTIVE'
+    })
+    .eq('id', userId)
+
+  if (profileError) {
+    return NextResponse.json({ error: profileError.message }, { status: 500 })
+  }
+
+  // 3. Create default leave_balances
+  const parsedPl = parseFloat(openingPl) || 0
+  const parsedCl = parseFloat(openingCl) || 0
+
+  const { error: balanceError } = await supabaseAdmin
+    .from('leave_balances')
+    .insert({
+      user_id: userId,
+      year: new Date().getFullYear(),
+      opening_pl: parsedPl,
+      opening_cl: parsedCl,
+      pl: parsedPl,
+      cl: parsedCl,
+      sl: 7,
+      comp: 0,
+      pl_accrued: 0,
+      pl_used: 0,
+      cl_used: 0,
+      sl_used: 0,
+      pl_carry_forward: 0
+    })
+
+  if (balanceError) {
+    return NextResponse.json({ error: balanceError.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ id: userId, name, email, role })
 }

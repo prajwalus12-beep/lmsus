@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 import { calculateMonthlyPLAccrual } from '@/lib/accrualEngine'
 import { syncUserLedger } from '@/lib/ledgerSync'
 
-const prisma = new PrismaClient()
-
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sessionUser = session.user as any
@@ -17,40 +13,64 @@ export async function POST(req: NextRequest) {
   }
 
   const { month, year } = await req.json()
-  const users = await prisma.user.findMany({ where: { status: 'ACTIVE' } })
+  const supabase = await getSupabaseServer()
+
+  const { data: users, error: usersError } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('status', 'ACTIVE')
+
+  if (usersError) return NextResponse.json({ error: usersError.message }, { status: 500 })
 
   const results = []
 
-  for (const user of users) {
-    const calc = await calculateMonthlyPLAccrual(prisma, user.id, year, month)
+  for (const user of (users || [])) {
+    const calc = await calculateMonthlyPLAccrual(supabase, user.id, year, month)
     
     if (calc.accrued > 0) {
       // Create a manual adjustment for the accrual
       // effective date is end of month or start of next
-      const accrualDate = new Date(year, month + 1, 1) // 1st of next month
+      const accrualDate = new Date(year, month + 1, 1).toISOString()
       
-      const adj = await prisma.leaveBalanceAdjustment.create({
-        data: {
-          userId: user.id,
-          leaveType: 'PL',
+      const { data: adj, error: adjError } = await supabase
+        .from('leave_balance_adjustments')
+        .insert({
+          user_id: user.id,
+          leave_type: 'PL',
           amount: calc.accrued,
-          adjustmentType: 'MONTHLY_ACCRUAL',
+          adjustment_type: 'MONTHLY_ACCRUAL',
           reason: `Monthly PL Accrual (${calc.workingDays} working days: ${calc.totalDays}d - ${calc.weekendsCount}w - ${calc.holidaysCount}h - ${calc.leaveDaysCount}l)`,
-          effectiveYear: year,
-          enteredBy: sessionUser.id,
-          enteredByName: 'System (Auto)',
-          createdAt: accrualDate
-        }
-      })
+          effective_year: year,
+          entered_by: sessionUser.id,
+          entered_by_name: 'System (Auto)',
+          created_at: accrualDate
+        })
+        .select('*')
+        .single()
 
-      // Update the user's actual balance
-      await prisma.leaveBalance.update({
-        where: { userId: user.id },
-        data: {
-          pl: { increment: calc.accrued },
-          plAccrued: { increment: calc.accrued }
-        }
-      })
+      if (adjError) {
+        console.error(`Error saving adjustment for user ${user.id}:`, adjError)
+        continue
+      }
+
+      // Fetch user's current leave balance
+      const { data: balance } = await supabase
+        .from('leave_balances')
+        .select('pl, pl_accrued')
+        .eq('user_id', user.id)
+        .single()
+
+      if (balance) {
+        // Update the user's actual balance
+        await supabase
+          .from('leave_balances')
+          .update({
+            pl: (balance.pl || 0) + calc.accrued,
+            pl_accrued: (balance.pl_accrued || 0) + calc.accrued,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', user.id)
+      }
 
       await syncUserLedger(user.id)
 

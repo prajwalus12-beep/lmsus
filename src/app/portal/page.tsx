@@ -1,34 +1,39 @@
-import prisma from '@/lib/prisma'
+import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { LeaveRequestForm } from "./LeaveRequestForm"
 import { CompOffRequest } from "./CompOffRequest"
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"
+import { redirect } from 'next/navigation'
 
 export default async function PortalPage() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession()
   
-  if (!session?.user?.email) {
-    return <div className="p-8 text-center">Not authenticated. Please log in.</div>;
+  if (!session?.user) {
+    redirect("/login")
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    include: { balances: true, requests: { orderBy: { createdAt: 'desc' } } }
-  });
+  const userId = session.user.id
 
-  const maxNegativeConfig = await prisma.systemConfig.findUnique({
-    where: { key: 'MAX_NEGATIVE_LEAVE' }
-  });
+  // Use supabaseAdmin to bypass RLS for fetching
+  const [
+    { data: balances },
+    { data: maxNegativeConfig },
+    { data: requests }
+  ] = await Promise.all([
+    supabaseAdmin.from('leave_balances').select('*').eq('user_id', userId).single(),
+    supabaseAdmin.from('system_configs').select('value').eq('key', 'MAX_NEGATIVE_LEAVE').single(),
+    supabaseAdmin.from('leave_requests').select('*').eq('user_id', userId).order('created_at', { ascending: false })
+  ])
+
   const maxNegative = parseFloat(maxNegativeConfig?.value || "-5");
 
-  if (!user || !user.balances) return <div className="p-8 text-center text-red-500">User balances not found. Contact HR.</div>;
+  if (!balances) return <div className="p-8 text-center text-red-500">User balances not found. Contact HR.</div>;
 
   const totalAllowed = 14 + 14 + 5; 
-  const totalUsed = (30 - user.balances.pl) + (14 - (user.balances.cl + user.balances.sl));
+  const totalUsed = (30 - balances.pl) + (14 - (balances.cl + balances.sl));
   const wellnessScore = Math.max(0, 100 - (totalUsed / totalAllowed) * 100);
 
   return (
@@ -39,7 +44,6 @@ export default async function PortalPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Render logic preserved... */}
         <Card className="col-span-1 md:col-span-2">
            <CardHeader>
              <CardTitle>Leave Balance Overview</CardTitle>
@@ -49,19 +53,19 @@ export default async function PortalPage() {
              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
                   <p className="text-xs text-indigo-600 font-semibold mb-1 uppercase tracking-wider">Privilege (PL)</p>
-                  <p className="text-3xl font-bold text-indigo-700">{user.balances.pl}</p>
+                  <p className="text-3xl font-bold text-indigo-700">{balances.pl}</p>
                 </div>
                 <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
                   <p className="text-xs text-amber-600 font-semibold mb-1 uppercase tracking-wider">Casual (CL)</p>
-                  <p className="text-3xl font-bold text-amber-700">{user.balances.cl}</p>
+                  <p className="text-3xl font-bold text-amber-700">{balances.cl}</p>
                 </div>
                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                   <p className="text-xs text-blue-600 font-semibold mb-1 uppercase tracking-wider">Sick (SL)</p>
-                  <p className="text-3xl font-bold text-blue-700">{user.balances.sl}</p>
+                  <p className="text-3xl font-bold text-blue-700">{balances.sl}</p>
                 </div>
                 <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
                   <p className="text-xs text-emerald-600 font-semibold mb-1 uppercase tracking-wider">Comp-Off</p>
-                  <p className="text-3xl font-bold text-emerald-700">{user.balances.comp}</p>
+                  <p className="text-3xl font-bold text-emerald-700">{balances.comp}</p>
                 </div>
              </div>
            </CardContent>
@@ -86,7 +90,7 @@ export default async function PortalPage() {
             <CardTitle>Apply for Leave</CardTitle>
           </CardHeader>
           <CardContent>
-            <LeaveRequestForm userId={user.id} balances={user.balances} maxNegative={maxNegative} />
+            <LeaveRequestForm userId={userId} balances={balances} maxNegative={maxNegative} />
           </CardContent>
         </Card>
         
@@ -95,7 +99,7 @@ export default async function PortalPage() {
             <CardTitle>Comp-Off Work Log</CardTitle>
           </CardHeader>
           <CardContent>
-            <CompOffRequest userId={user.id} />
+            <CompOffRequest userId={userId} />
           </CardContent>
         </Card>
       </div>
@@ -106,13 +110,13 @@ export default async function PortalPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {user.requests.map((req) => (
+            {(requests || []).map((req: any) => (
               <div key={req.id} className="flex items-center justify-between p-4 border rounded-lg bg-white shadow-sm">
                 <div>
                   <p className="font-semibold text-slate-900">{req.type} Leave</p>
-                  <p className="text-sm text-slate-500">{new Date(req.startDate).toLocaleDateString()} - {new Date(req.endDate).toLocaleDateString()}</p>
-                  {req.attachmentUrl && (
-                    <a href={req.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline mt-1 inline-block">
+                  <p className="text-sm text-slate-500">{new Date(req.start_date).toLocaleDateString()} - {new Date(req.end_date).toLocaleDateString()}</p>
+                  {req.attachment_url && (
+                    <a href={req.attachment_url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline mt-1 inline-block">
                       View Document
                     </a>
                   )}
@@ -122,6 +126,9 @@ export default async function PortalPage() {
                 </Badge>
               </div>
             ))}
+            {(requests || []).length === 0 && (
+              <div className="text-center py-6 text-slate-500 italic">No recent requests found.</div>
+            )}
           </div>
         </CardContent>
       </Card>
