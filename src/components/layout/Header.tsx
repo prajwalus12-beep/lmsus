@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Bell, Menu, Search, Clock } from "lucide-react";
 import Link from "next/link";
@@ -86,13 +86,15 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
             <DropdownMenuItem render={<Link href="/profile" />}>
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem render={<Link href="/settings" />}>
-              Settings
-            </DropdownMenuItem>
             {(session?.user as any)?.role === 'ADMIN' || (session?.user as any)?.role === 'MANAGER' ? (
-              <DropdownMenuItem render={<Link href="/audit" />}>
-                System Logs
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuItem render={<Link href="/settings" />}>
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem render={<Link href="/audit" />}>
+                  System Logs
+                </DropdownMenuItem>
+              </>
             ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-red-600" onClick={() => signOut()}>Log out</DropdownMenuItem>
