@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/supabaseServer'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import fs from 'fs'
-import path from 'process'
-
+import path from 'path'
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
   if (!session?.user || (session.user as any).role !== 'ADMIN') {

@@ -10,7 +10,7 @@ import { Mail, User as UserIcon, ShieldCheck, Loader2, Lock } from "lucide-react
 import { toast } from "sonner"
 
 export function ProfileClient() {
-  const { data: session, update } = useSession()
+  const { data: session } = useSession()
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
   const [commEmail, setCommEmail] = useState("")

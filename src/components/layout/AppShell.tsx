@@ -13,7 +13,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Reset loading state on pathname change (navigation complete)
   useEffect(() => {
-    setIsNavigating(false)
+    const handle = requestAnimationFrame(() => {
+      setIsNavigating(false)
+    })
+    return () => cancelAnimationFrame(handle)
   }, [pathname])
 
   // Intercept clicks on internal links to trigger loading state

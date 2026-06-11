@@ -61,7 +61,7 @@ export async function approveRequest(id: string) {
       request.half_day !== "NONE"
     )
     
-    const leaveType = effectiveType.toLowerCase() // Use effectiveType (Rule 37)
+    const leaveType = (effectiveType || request.type).toLowerCase() // Use effectiveType (Rule 37)
     
     const { data: balance } = await supabaseAdmin
       .from('leave_balances')

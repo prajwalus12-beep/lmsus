@@ -138,7 +138,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         </div>
         <div className="space-y-2">
           <Label htmlFor="halfDay">Half Day</Label>
-          <Select value={halfDay} onValueChange={setHalfDay}>
+          <Select value={halfDay} onValueChange={(v) => setHalfDay(v || "NONE")}>
             <SelectTrigger id="halfDay">
               <SelectValue placeholder="Select half day" />
             </SelectTrigger>

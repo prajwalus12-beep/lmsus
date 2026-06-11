@@ -132,7 +132,7 @@ export function HolidaysClient() {
           <p className="text-slate-500">View and manage the annual holiday calendar.</p>
         </div>
         <div className="flex gap-2">
-          <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+          <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v || ""))}>
             <SelectTrigger className="w-32 bg-white">
               <SelectValue />
             </SelectTrigger>
