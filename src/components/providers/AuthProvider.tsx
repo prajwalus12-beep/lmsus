@@ -78,8 +78,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // 1. Initial session check
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user }, error }) => {
+      if (error) {
+        console.warn("Auth check error:", error.message);
+        if (error.message.includes('Refresh Token') || error.status === 400) {
+          // If refresh token is invalid, clear the session fully
+          await supabase.auth.signOut();
+        }
+      }
       fetchSession(user)
+    }).catch(err => {
+      console.error("Auth init exception:", err);
     })
 
     // 2. Auth state change listener
