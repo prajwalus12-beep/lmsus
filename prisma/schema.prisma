@@ -41,7 +41,7 @@ model User {
   ledgerEntries   LeaveLedgerEntry[]
   lastWorkingDay  DateTime?
   probationEndDate DateTime?
-  communicationEmail String                  @default("sandeepjain200019@gmail.com")
+  communicationEmail String                  @default("remotedesktopnyati@gmail.com")
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 }
