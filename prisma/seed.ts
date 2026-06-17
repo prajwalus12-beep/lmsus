@@ -184,8 +184,50 @@ async function main() {
     }
   })
 
+  const emp4 = await prisma.user.create({
+    data: {
+      name: 'Alice Wong',
+      email: 'alice.wong@yopmail.com',
+      role: 'EMPLOYEE',
+      password: hashedPassword,
+      departmentId: sales.id,
+      joinDate: new Date('2026-02-01T00:00:00.000Z'),
+      daysWorked: 120,
+      balances: {
+        create: {
+          year: 2026,
+          openingPl: 0, openingCl: 7, openingComp: 0,
+          pl: 6, cl: 7, sl: 7, comp: 0, lop: 0,
+          plAccrued: 6, plUsed: 0, clUsed: 0, slUsed: 0,
+          plCarryForward: 0,
+        }
+      }
+    }
+  })
+
+  const emp5 = await prisma.user.create({
+    data: {
+      name: 'Diana Prince',
+      email: 'diana.prince@yopmail.com',
+      role: 'EMPLOYEE',
+      password: hashedPassword,
+      departmentId: eng.id,
+      joinDate: new Date('2025-11-15T00:00:00.000Z'),
+      daysWorked: 180,
+      balances: {
+        create: {
+          year: 2026,
+          openingPl: 0, openingCl: 7, openingComp: 0,
+          pl: 9, cl: 7, sl: 7, comp: 0, lop: 0,
+          plAccrued: 9, plUsed: 0, clUsed: 0, slUsed: 0,
+          plCarryForward: 0,
+        }
+      }
+    }
+  })
+
   // Add 10-day PL leave for EVERYONE in April to verify pro-rata logic
-  const allUsers = [admin, manager, emp1, emp2, emp3]
+  const allUsers = [admin, manager, emp1, emp2, emp3, emp4, emp5]
   for (const u of allUsers) {
     await prisma.leaveRequest.create({
       data: {
