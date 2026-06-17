@@ -114,7 +114,7 @@ export async function submitLeaveRequest(data: {
     .eq('status', 'ACTIVE')
 
   const adminEmails = (adminsAndManagers || []).map((u: any) => u.communication_email || u.email)
-  const applicantEmail = user?.communication_email || user?.email || "remotedesktopnyati@gmail.com"
+  const applicantEmail = user?.communication_email || user?.email || "noreply@company.com"
 
   const formattedStartDate = new Date(startDate).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric'
@@ -287,7 +287,7 @@ export async function submitCompOffWork(data: {
     .eq('status', 'ACTIVE')
 
   const adminEmails = (adminsAndManagers || []).map((u: any) => u.communication_email || u.email)
-  const applicantEmail = user?.communication_email || user?.email || "remotedesktopnyati@gmail.com"
+  const applicantEmail = user?.communication_email || user?.email || "noreply@company.com"
 
   const formattedDate = new Date(dateWorked).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric'

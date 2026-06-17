@@ -13,7 +13,7 @@ import { PuppyLoader } from "@/components/ui/PuppyLoader"
 const TEST_ACCOUNTS = [
   {
     name: "Admin User",
-    email: "admin@company.com",
+    email: "admin@yopmail.com",
     role: "HR Admin",
     dept: "HR",
     color: "bg-purple-100 text-purple-700 border-purple-200",
@@ -21,7 +21,7 @@ const TEST_ACCOUNTS = [
   },
   {
     name: "Rahul Verma",
-    email: "manager@company.com",
+    email: "manager@yopmail.com",
     role: "Manager",
     dept: "Engineering",
     color: "bg-blue-100 text-blue-700 border-blue-200",
@@ -29,7 +29,7 @@ const TEST_ACCOUNTS = [
   },
   {
     name: "John Doe",
-    email: "john@company.com",
+    email: "john@yopmail.com",
     role: "Employee",
     dept: "Engineering",
     color: "bg-green-100 text-green-700 border-green-200",
@@ -37,7 +37,7 @@ const TEST_ACCOUNTS = [
   },
   {
     name: "Alice Wong",
-    email: "alice.wong@company.com",
+    email: "alice.wong@yopmail.com",
     role: "Employee",
     dept: "Sales",
     color: "bg-amber-100 text-amber-700 border-amber-200",
@@ -45,7 +45,7 @@ const TEST_ACCOUNTS = [
   },
   {
     name: "Diana Prince",
-    email: "diana.prince@company.com",
+    email: "diana.prince@yopmail.com",
     role: "Employee (Probation)",
     dept: "Engineering",
     color: "bg-red-100 text-red-700 border-red-200",

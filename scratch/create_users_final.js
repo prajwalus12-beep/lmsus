@@ -23,13 +23,13 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 })
 
 const users = [
-  { email: 'admin@company.com', password: 'Unique@123', name: 'Priya Sharma', role: 'ADMIN' },
-  { email: 'manager@company.com', password: 'Unique@123', name: 'Rahul Verma', role: 'MANAGER' },
-  { email: 'john@company.com', password: 'Unique@123', name: 'John Doe', role: 'EMPLOYEE' },
-  { email: 'jane@company.com', password: 'Unique@123', name: 'Jane Smith', role: 'EMPLOYEE' },
-  { email: 'amit@company.com', password: 'Unique@123', name: 'Amit Kumar', role: 'EMPLOYEE' },
-  { email: 'alice.wong@company.com', password: 'Unique@123', name: 'Alice Wong', role: 'EMPLOYEE' },
-  { email: 'diana.prince@company.com', password: 'Unique@123', name: 'Diana Prince', role: 'EMPLOYEE' },
+  { email: 'admin@yopmail.com', password: 'Unique@123', name: 'Priya Sharma', role: 'ADMIN' },
+  { email: 'manager@yopmail.com', password: 'Unique@123', name: 'Rahul Verma', role: 'MANAGER' },
+  { email: 'john@yopmail.com', password: 'Unique@123', name: 'John Doe', role: 'EMPLOYEE' },
+  { email: 'jane@yopmail.com', password: 'Unique@123', name: 'Jane Smith', role: 'EMPLOYEE' },
+  { email: 'amit@yopmail.com', password: 'Unique@123', name: 'Amit Kumar', role: 'EMPLOYEE' },
+  { email: 'alice.wong@yopmail.com', password: 'Unique@123', name: 'Alice Wong', role: 'EMPLOYEE' },
+  { email: 'diana.prince@yopmail.com', password: 'Unique@123', name: 'Diana Prince', role: 'EMPLOYEE' },
 ]
 
 async function createUsers() {

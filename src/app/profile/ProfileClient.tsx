@@ -142,7 +142,7 @@ export function ProfileClient() {
               onChange={(e) => setCommEmail(e.target.value)} 
               placeholder="Enter your personal/work email"
             />
-            <p className="text-[10px] text-slate-400">Default: remotedesktopnyati@gmail.com</p>
+            <p className="text-[10px] text-slate-400">Default: noreply@company.com</p>
           </div>
           <Button onClick={handleUpdate} disabled={loading} className="bg-indigo-600 hover:bg-indigo-700">
             {loading ? "Updating..." : "Save Preferences"}

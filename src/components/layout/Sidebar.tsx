@@ -15,6 +15,7 @@ import {
   BookOpen,
   User,
   X,
+  Database,
 } from "lucide-react";
 
 const navItems = [
@@ -28,7 +29,7 @@ const navItems = [
   { name: "Team Directory", href: "/team", icon: Users },
   { name: "Profile", href: "/profile", icon: User },
   { name: "Reports", href: "/reports", icon: FileText },
-  { name: "Opening Balances", href: "/settings/balances", icon: Settings },
+  { name: "Opening Balances", href: "/settings/balances", icon: Database },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -90,7 +91,15 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
 
       <nav className="flex-1 py-6 px-4 space-y-1 overflow-y-auto">
         {visibleNavItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          const isActive = pathname === item.href || (
+            item.href !== "/" && 
+            pathname.startsWith(item.href + "/") && 
+            !visibleNavItems.some(other => 
+              other.href !== item.href && 
+              other.href.startsWith(item.href + "/") && 
+              (pathname === other.href || pathname.startsWith(other.href + "/"))
+            )
+          );
           const Icon = item.icon;
           return (
             <Link

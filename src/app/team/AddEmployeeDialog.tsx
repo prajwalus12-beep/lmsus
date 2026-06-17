@@ -96,7 +96,7 @@ export function AddEmployeeDialog({ onRefresh }: { onRefresh: () => void }) {
               <Input 
                 value={formData.email} 
                 onChange={e => setFormData({...formData, email: e.target.value})} 
-                placeholder="john@company.com"
+                placeholder="you@company.com"
                 type="email"
               />
             </div>

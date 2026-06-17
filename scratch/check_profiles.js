@@ -42,7 +42,7 @@ async function checkProfiles() {
   console.log('\n--- Trying to create a user via admin SDK ---\n')
   
   const { data, error } = await supabase.auth.admin.createUser({
-    email: `test_${Date.now()}@example.com`,
+    email: `test_${Date.now()}@yopmail.com`,
     password: 'Test123!',
     email_confirm: true
   })

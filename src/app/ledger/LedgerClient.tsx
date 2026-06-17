@@ -317,7 +317,9 @@ export function LedgerClient({
               <User className="w-4 h-4 text-slate-500" />
               <Select value={selectedUser.id} onValueChange={(v) => v && handleUserChange(v)}>
                 <SelectTrigger className="w-56 bg-white">
-                  <SelectValue placeholder="Select employee" />
+                  <SelectValue>
+                    {allUsers.find(u => u.id === selectedUser.id)?.name || selectedUser.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {allUsers.map((u) => (

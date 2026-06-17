@@ -81,7 +81,7 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       name: 'Priya Sharma',
-      email: 'admin@company.com',
+      email: 'admin@yopmail.com',
       role: 'ADMIN',
       password: hashedPassword,
       departmentId: hr.id,
@@ -102,7 +102,7 @@ async function main() {
   const manager = await prisma.user.create({
     data: {
       name: 'Rahul Verma',
-      email: 'manager@company.com',
+      email: 'manager@yopmail.com',
       role: 'MANAGER',
       password: hashedPassword,
       departmentId: eng.id,
@@ -123,7 +123,7 @@ async function main() {
   const emp1 = await prisma.user.create({
     data: {
       name: 'John Doe',
-      email: 'john@company.com',
+      email: 'john@yopmail.com',
       role: 'EMPLOYEE',
       password: hashedPassword,
       departmentId: eng.id,
@@ -144,7 +144,7 @@ async function main() {
   const emp2 = await prisma.user.create({
     data: {
       name: 'Jane Smith',
-      email: 'jane@company.com',
+      email: 'jane@yopmail.com',
       role: 'EMPLOYEE',
       password: hashedPassword,
       departmentId: sales.id,
@@ -165,7 +165,7 @@ async function main() {
   const emp3 = await prisma.user.create({
     data: {
       name: 'Amit Kumar',
-      email: 'amit@company.com',
+      email: 'amit@yopmail.com',
       role: 'EMPLOYEE',
       password: hashedPassword,
       departmentId: finance.id,

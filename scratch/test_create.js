@@ -27,7 +27,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 async function testCreate() {
   console.log('Testing minimal user creation...')
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email: `test-${Date.now()}@example.com`,
+    email: `test-${Date.now()}@yopmail.com`,
     password: 'Password123!',
     email_confirm: true
   })

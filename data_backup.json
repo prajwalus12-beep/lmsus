@@ -36,7 +36,7 @@
       "joinDate": "2023-01-01T00:00:00.000Z",
       "daysWorked": 800,
       "status": "ACTIVE",
-      "communicationEmail": "remotedesktopnyati@gmail.com",
+      "communicationEmail": "noreply@company.com",
       "createdAt": "2026-05-16T06:09:07.559Z",
       "updatedAt": "2026-05-16T06:09:07.559Z"
     },
@@ -50,7 +50,7 @@
       "joinDate": "2024-03-15T00:00:00.000Z",
       "daysWorked": 500,
       "status": "ACTIVE",
-      "communicationEmail": "remotedesktopnyati@gmail.com",
+      "communicationEmail": "noreply@company.com",
       "createdAt": "2026-05-16T06:09:07.568Z",
       "updatedAt": "2026-05-16T06:09:07.568Z"
     },
@@ -64,7 +64,7 @@
       "joinDate": "2025-06-01T00:00:00.000Z",
       "daysWorked": 250,
       "status": "ACTIVE",
-      "communicationEmail": "remotedesktopnyati@gmail.com",
+      "communicationEmail": "noreply@company.com",
       "createdAt": "2026-05-16T06:09:07.577Z",
       "updatedAt": "2026-05-16T06:09:07.577Z"
     },
@@ -78,7 +78,7 @@
       "joinDate": "2026-01-10T00:00:00.000Z",
       "daysWorked": 100,
       "status": "ACTIVE",
-      "communicationEmail": "remotedesktopnyati@gmail.com",
+      "communicationEmail": "noreply@company.com",
       "createdAt": "2026-05-16T06:09:07.589Z",
       "updatedAt": "2026-05-16T06:09:07.589Z"
     },
@@ -92,7 +92,7 @@
       "joinDate": "2024-09-01T00:00:00.000Z",
       "daysWorked": 400,
       "status": "NOTICE_PERIOD",
-      "communicationEmail": "remotedesktopnyati@gmail.com",
+      "communicationEmail": "noreply@company.com",
       "createdAt": "2026-05-16T06:09:07.598Z",
       "updatedAt": "2026-05-16T06:09:07.598Z"
     }

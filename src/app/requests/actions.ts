@@ -291,7 +291,7 @@ export async function approveCompOff(id: string) {
 
   // Fetch applicant profile
   const { data: profile } = await supabaseAdmin.from('profiles').select('name, email, communication_email').eq('id', entry.user_id).single()
-  const targetEmail = profile?.communication_email || profile?.email || "remotedesktopnyati@gmail.com"
+  const targetEmail = profile?.communication_email || profile?.email || "noreply@company.com"
   const approverName = session.user.name || 'HR Administrator'
 
   const formattedDate = new Date(entry.date_worked).toLocaleDateString('en-IN', {
@@ -367,7 +367,7 @@ export async function rejectCompOff(id: string) {
 
   // Fetch applicant profile
   const { data: profile } = await supabaseAdmin.from('profiles').select('name, email, communication_email').eq('id', entry.user_id).single()
-  const targetEmail = profile?.communication_email || profile?.email || "remotedesktopnyati@gmail.com"
+  const targetEmail = profile?.communication_email || profile?.email || "noreply@company.com"
 
   const formattedDate = new Date(entry.date_worked).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric'
