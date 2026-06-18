@@ -15,10 +15,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import { approveRequest, rejectRequest, approveCompOff, rejectCompOff } from "./actions"
+import { EmployeeStatusBadge } from "@/components/EmployeeStatusBadge"
 
 export type LeaveRequestRow = {
   id: string
   employeeName: string
+  employeeStatus: string
   department: string
   type: string
   startDate: string
@@ -42,6 +44,12 @@ export const columns: ColumnDef<LeaveRequestRow>[] = [
         </Button>
       )
     },
+    cell: ({ row }) => (
+      <div className="flex flex-col gap-1">
+        <span className="font-medium text-slate-900">{row.getValue("employeeName")}</span>
+        <EmployeeStatusBadge status={row.original.employeeStatus} />
+      </div>
+    )
   },
   {
     accessorKey: "department",
@@ -153,6 +161,12 @@ export const compOffColumns: ColumnDef<any>[] = [
   {
     accessorKey: "employeeName",
     header: "Employee",
+    cell: ({ row }) => (
+      <div className="flex flex-col gap-1">
+        <span className="font-medium text-slate-900">{row.getValue("employeeName")}</span>
+        <EmployeeStatusBadge status={row.original.employeeStatus} />
+      </div>
+    )
   },
   {
     accessorKey: "dateWorked",

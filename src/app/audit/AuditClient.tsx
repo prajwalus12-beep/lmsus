@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { History, Search, Download } from "lucide-react"
+import { EmployeeStatusBadge } from "@/components/EmployeeStatusBadge"
 
 export function AuditClient({ logs }: { logs: any[] }) {
   const columns: ColumnDef<any>[] = [
@@ -32,8 +33,11 @@ export function AuditClient({ logs }: { logs: any[] }) {
       accessorKey: "userName",
       header: "User",
       cell: ({ row }) => (
-        <div className="flex flex-col">
-          <span className="font-medium text-sm">{row.original.userName}</span>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm">{row.original.userName}</span>
+            <EmployeeStatusBadge status={row.original.userStatus} />
+          </div>
           <span className="text-[10px] uppercase text-slate-400 font-bold">{row.original.userRole}</span>
         </div>
       ),
@@ -87,7 +91,7 @@ export function AuditClient({ logs }: { logs: any[] }) {
       `"${l.createdAt}","${l.userName}","${l.action}","${l.entity}","${JSON.stringify(l.metadata).replace(/"/g, '""')}"`
     ).join("\n")
     const blob = new Blob([headers + rows], { type: 'text/csv' })
-    const url = window.URL.createObjectURL(blob)
+    const url = window.window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `audit_logs_${new Date().toISOString()}.csv`

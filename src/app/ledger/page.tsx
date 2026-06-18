@@ -25,13 +25,14 @@ export default async function LedgerPage() {
   if (isHR) {
     const { data } = await supabaseAdmin
       .from('profiles')
-      .select('id, name, departments(name)')
+      .select('id, name, status, departments(name)')
       .in('status', ['ACTIVE', 'NOTICE_PERIOD'])
       .neq('role', 'ADMIN')
       .order('name', { ascending: true })
     allUsers = (data || []).map((u: any) => ({
       id: u.id,
       name: u.name,
+      status: u.status,
       department: { name: (Array.isArray(u.departments) ? u.departments[0]?.name : u.departments?.name) || 'N/A' }
     }))
   }
@@ -47,7 +48,7 @@ export default async function LedgerPage() {
     { data: ledgerEntries }
   ] = await Promise.all([
     supabaseAdmin.from('system_configs').select('value').eq('key', 'SHOW_CL_BALANCE_TO_EMPLOYEE').single(),
-    supabaseAdmin.from('profiles').select('id, name, departments(name), leave_balances(*)').eq('id', targetUserId).single(),
+    supabaseAdmin.from('profiles').select('id, name, status, departments(name), leave_balances(*)').eq('id', targetUserId).single(),
     supabaseAdmin.from('leave_ledger_entries').select('*')
       .eq('user_id', targetUserId)
       .gte('date', startOfYear)
@@ -102,6 +103,7 @@ export default async function LedgerPage() {
         initialUser={{
           id: profile.id,
           name: profile.name,
+          status: profile.status,
           department: deptName,
           openingCl: balances?.opening_cl || 0,
           openingPl: balances?.opening_pl || 0,

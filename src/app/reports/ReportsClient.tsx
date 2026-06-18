@@ -9,6 +9,7 @@ import { Download, FileText, AlertTriangle } from "lucide-react"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import { toast } from "sonner"
+import { EmployeeStatusBadge } from "@/components/EmployeeStatusBadge"
 
 export function ReportsClient({ data }: { data: any[] }) {
 
@@ -168,7 +169,12 @@ export function ReportsClient({ data }: { data: any[] }) {
                 <TableBody>
                   {data.map(row => (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium">{row.name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium">{row.name}</span>
+                          <EmployeeStatusBadge status={row.status} />
+                        </div>
+                      </TableCell>
                       <TableCell>{row.department}</TableCell>
                       <TableCell className="text-right">{row.openingPl}</TableCell>
                       <TableCell className="text-right text-indigo-600">{row.plAccrued}</TableCell>
@@ -198,7 +204,12 @@ export function ReportsClient({ data }: { data: any[] }) {
                 <TableBody>
                   {data.map(row => (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium">{row.name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium">{row.name}</span>
+                          <EmployeeStatusBadge status={row.status} />
+                        </div>
+                      </TableCell>
                       <TableCell>{row.department}</TableCell>
                       <TableCell className="text-right font-semibold text-amber-600">{row.cl}</TableCell>
                       <TableCell className="text-right text-slate-500">−{row.clUsed}</TableCell>
@@ -224,7 +235,12 @@ export function ReportsClient({ data }: { data: any[] }) {
                 <TableBody>
                   {data.map(row => (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium">{row.name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium">{row.name}</span>
+                          <EmployeeStatusBadge status={row.status} />
+                        </div>
+                      </TableCell>
                       <TableCell>{row.department}</TableCell>
                       <TableCell className="text-right font-semibold text-green-600">{row.comp}</TableCell>
                     </TableRow>
@@ -256,8 +272,11 @@ export function ReportsClient({ data }: { data: any[] }) {
                   {data.filter(r => r.negativeTracking.length > 0 || r.pl < 0 || r.cl < 0 || r.sl < 0).length > 0
                     ? data.filter(r => r.negativeTracking.length > 0 || r.pl < 0 || r.cl < 0 || r.sl < 0).map(row => (
                       <TableRow key={row.id}>
-                        <TableCell className="font-medium">
-                          {row.name}
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <span className="font-medium">{row.name}</span>
+                            <EmployeeStatusBadge status={row.status} />
+                          </div>
                           {row.negativeTracking.length > 0 && (
                             <div className="text-[10px] text-red-500 font-normal">
                               {row.negativeTracking.length} recorded recovery entries

@@ -11,10 +11,10 @@ export default async function RequestsPage() {
 
   const [{ data: requests }, { data: compOffs }] = await Promise.all([
     supabaseAdmin.from('leave_requests')
-      .select('*, profiles!leave_requests_user_id_fkey(name, departments(name))')
+      .select('*, profiles!leave_requests_user_id_fkey(name, status, departments(name))')
       .order('created_at', { ascending: false }),
     supabaseAdmin.from('comp_off_work_entries')
-      .select('*, profiles!comp_off_work_entries_user_id_fkey(name, departments(name))')
+      .select('*, profiles!comp_off_work_entries_user_id_fkey(name, status, departments(name))')
       .order('created_at', { ascending: false })
   ]);
 
@@ -26,6 +26,7 @@ export default async function RequestsPage() {
   const formattedRequests = (requests || []).map((req: any) => ({
     id: req.id,
     employeeName: req.profiles?.name || 'Unknown',
+    employeeStatus: req.profiles?.status || 'ACTIVE',
     department: req.profiles?.departments?.name || 'N/A',
     type: req.type,
     startDate: new Date(req.start_date).toLocaleDateString(),
@@ -38,6 +39,7 @@ export default async function RequestsPage() {
   const formattedCompOffs = (compOffs || []).map((co: any) => ({
     id: co.id,
     employeeName: co.profiles?.name || 'Unknown',
+    employeeStatus: co.profiles?.status || 'ACTIVE',
     department: co.profiles?.departments?.name || 'N/A',
     dateWorked: new Date(co.date_worked).toLocaleDateString(),
     hoursWorked: co.hours_worked,

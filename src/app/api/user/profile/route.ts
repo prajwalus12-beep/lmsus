@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const supabase = await getSupabaseServer()
   const { data: user, error } = await supabase
     .from('profiles')
-    .select('communication_email')
+    .select('communication_email, status')
     .eq('id', session.user.id)
     .single()
   
@@ -18,7 +18,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ communicationEmail: user?.communication_email })
+  return NextResponse.json({ 
+    communicationEmail: user?.communication_email,
+    status: user?.status 
+  })
 }
 
 export async function PUT(req: NextRequest) {

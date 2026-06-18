@@ -7,12 +7,14 @@ import { ArrowUpDown, Calculator, Trash2, Edit } from "lucide-react"
 import { toast } from "sonner"
 import { useState } from "react"
 import { EditEmployeeDialog } from "./EditEmployeeDialog"
+import { EmployeeStatusBadge } from "@/components/EmployeeStatusBadge"
 
 export type TeamRow = {
   id: string
   name: string
   email: string
   role: string
+  status: string
   department: string
   plBalance: number
   clSlBalance: number
@@ -98,6 +100,7 @@ export const columns: ColumnDef<TeamRow>[] = [
     header: () => <span className="text-xs font-bold">Status</span>,
     cell: ({ row }) => {
       const role = row.getValue("role") as string
+      const status = row.original.status as string
       const probationEndDateStr = row.original.probationEndDate
       
       let isProbation = false
@@ -112,8 +115,11 @@ export const columns: ColumnDef<TeamRow>[] = [
 
       return (
         <div className="flex flex-col gap-1">
-          <Badge variant="secondary" className="text-[10px] px-1 h-4">{role}</Badge>
-          {isProbation && <Badge variant="outline" className="border-amber-200 text-amber-700 bg-amber-50 text-[9px] px-1 h-4">Probation</Badge>}
+          <div className="flex items-center gap-1">
+            <Badge variant="secondary" className="text-[10px] px-1 h-4 uppercase">{role}</Badge>
+            <EmployeeStatusBadge status={status} className="h-4" />
+          </div>
+          {isProbation && <Badge variant="outline" className="border-amber-200 text-amber-700 bg-amber-50 text-[9px] px-1 h-4 w-fit">Probation</Badge>}
         </div>
       )
     }

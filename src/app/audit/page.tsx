@@ -14,7 +14,7 @@ export default async function AuditPage() {
 
   const { data: logs, error } = await supabase
     .from('audit_logs')
-    .select('*, profiles(name, role)')
+    .select('*, profiles(name, role, status)')
     .order('created_at', { ascending: false })
     .limit(500)
 
@@ -26,6 +26,7 @@ export default async function AuditPage() {
     id: log.id,
     userName: log.profiles?.name || 'System',
     userRole: log.profiles?.role || 'SYSTEM',
+    userStatus: log.profiles?.status || 'ACTIVE',
     action: log.action,
     entity: log.entity,
     entityId: log.entity_id,

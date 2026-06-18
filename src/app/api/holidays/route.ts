@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
-import { getCachedHolidays } from "@/lib/cachedData";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendEmail } from "@/lib/email";
 
+
 export async function GET() {
   try {
-    const year = new Date().getFullYear();
-    const holidays = await getCachedHolidays(year);
-    return NextResponse.json(holidays);
+    // Fetch all holidays directly (no year filter) so the client can
+    // filter by any year using the year-selector dropdown.
+    const { data, error } = await supabaseAdmin
+      .from("holidays")
+      .select("*")
+      .order("date", { ascending: true });
+
+    if (error) throw error;
+    return NextResponse.json(data || []);
   } catch (error: any) {
+    console.error("GET /api/holidays error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -16,29 +23,36 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { name, date } = await req.json();
+
+    if (!name || !date) {
+      return NextResponse.json({ error: "name and date are required" }, { status: 400 });
+    }
+
     const { data: holiday, error } = await supabaseAdmin
       .from("holidays")
-      .insert({ name, date, year: new Date(date).getFullYear() })
+      .insert({ name, date })
       .select()
       .single();
 
     if (error) throw error;
 
-    // Fetch all active employees
-    const { data: users } = await supabaseAdmin
+
+    // Fire-and-forget email blast — a mail failure must NOT cause a 500
+    supabaseAdmin
       .from("profiles")
-      .select("email, communication_email, name")
-      .eq("status", "ACTIVE");
+      .select("email, name")
+      .eq("status", "ACTIVE")
+      .then(({ data: users }) => {
+        if (!users || users.length === 0) return;
 
-    if (users && users.length > 0) {
-      const formattedDate = new Date(date).toLocaleDateString("en-IN", {
-        weekday: "long",
-        day: "2-digit",
-        month: "short",
-        year: "numeric"
-      });
+        const formattedDate = new Date(date).toLocaleDateString("en-IN", {
+          weekday: "long",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        });
 
-      const emailHtml = `
+        const emailHtml = `
 <div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
     <div style="background-color: #8b5cf6; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL - HOLIDAY ANNOUNCEMENT</div>
@@ -65,23 +79,22 @@ export async function POST(req: Request) {
       </div>
     </div>
   </div>
-</div>
-      `;
+</div>`;
 
-      // Send emails
-      await Promise.all(
-        users.map(u => 
-          sendEmail({
-            to: u.communication_email || u.email,
-            subject: `New Public Holiday: ${name}`,
-            html: emailHtml
-          })
-        )
-      );
-    }
+        Promise.all(
+          users.map((u: any) =>
+            sendEmail({
+              to: u.email,
+              subject: `New Public Holiday: ${name}`,
+              html: emailHtml,
+            })
+          )
+        ).catch((err) => console.error("Holiday email blast error:", err));
+      });
 
     return NextResponse.json(holiday);
   } catch (error: any) {
+    console.error("POST /api/holidays error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -89,16 +102,23 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const { id, name, date } = await req.json();
+
+    if (!id || !name || !date) {
+      return NextResponse.json({ error: "id, name and date are required" }, { status: 400 });
+    }
+
     const { data: holiday, error } = await supabaseAdmin
       .from("holidays")
-      .update({ name, date, year: new Date(date).getFullYear() })
+      .update({ name, date })
       .eq("id", id)
       .select()
       .single();
 
     if (error) throw error;
+
     return NextResponse.json(holiday);
   } catch (error: any) {
+    console.error("PUT /api/holidays error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -115,8 +135,10 @@ export async function DELETE(req: Request) {
       .eq("id", id);
 
     if (error) throw error;
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    console.error("DELETE /api/holidays error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

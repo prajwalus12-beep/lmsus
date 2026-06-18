@@ -14,11 +14,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner"
 import { 
   Lock, AlertTriangle, Clock, Calculator, FlaskConical,
-  PlusCircle, MinusCircle, History, ShieldAlert, Eye, EyeOff, BookOpen, RefreshCcw, Shield, Loader2
+  PlusCircle, MinusCircle, History, ShieldAlert, Eye, EyeOff, BookOpen, RefreshCcw, Shield, Loader2,
+  Mail, MailCheck, MailX, Send, Inbox
 } from "lucide-react"
 
 
-export function SettingsClient({ closures, adjustments, negativeLeaves, testMode, users, showClBalanceToEmployee, initialConfigs }: any) {
+export function SettingsClient({ closures, adjustments, negativeLeaves, testMode, users, showClBalanceToEmployee, emailEnabled: initialEmailEnabled, initialConfigs }: any) {
   const signOut = useSignOut()
   const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0])
   const [isTestMode, setIsTestMode] = useState(testMode?.isTestMode ?? false)
@@ -43,6 +44,10 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   const [maxNegative, setMaxNegative] = useState(initialConfigs?.['MAX_NEGATIVE_LEAVE'] || "-5")
   const [savingGlobalConfigs, setSavingGlobalConfigs] = useState(false)
   const [resetting, setResetting] = useState(false)
+
+  // Email settings
+  const [emailEnabled, setEmailEnabled] = useState<boolean>(initialEmailEnabled ?? true)
+  const [savingEmailSetting, setSavingEmailSetting] = useState(false)
 
   const handleCloseYear = async () => {
     if (!confirm("Are you sure you want to close the year 2026? This will reset CL/SL and carry forward PL. This action is irreversible.")) return
@@ -171,6 +176,28 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
     }
   }
 
+  const handleSaveEmailSetting = async () => {
+    setSavingEmailSetting(true)
+    try {
+      const res = await fetch('/api/leave/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: 'EMAIL_ENABLED',
+          value: String(emailEnabled),
+          description: 'Whether the system sends/receives emails to/from employees',
+        }),
+      })
+      if (res.ok) {
+        toast.success(`Email communication ${emailEnabled ? 'enabled' : 'disabled'} successfully.`)
+      } else {
+        toast.error('Failed to save email setting')
+      }
+    } finally {
+      setSavingEmailSetting(false)
+    }
+  }
+
   // Stub for test mode scenario simulation
   const handleSimulate = async (scenario: string) => {
     toast.info(`Simulating: ${scenario} (not yet implemented)`)
@@ -206,15 +233,18 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
       </div>
 
       <Tabs defaultValue="yearend">
-        <TabsList className="mb-4 flex-wrap h-auto gap-1">
-          <TabsTrigger value="yearend"><Lock className="w-4 h-4 mr-2" />Year-End Closure</TabsTrigger>
-          <TabsTrigger value="policy"><ShieldAlert className="w-4 h-4 mr-2" />Policy Config</TabsTrigger>
-          <TabsTrigger value="adjustments"><Calculator className="w-4 h-4 mr-2" />Manual Adjustments</TabsTrigger>
-          <TabsTrigger value="maintenance"><Shield className="w-4 h-4 mr-2" />Maintenance</TabsTrigger>
-          <TabsTrigger value="negative"><AlertTriangle className="w-4 h-4 mr-2" />Negative Leave</TabsTrigger>
-          <TabsTrigger value="testmode"><FlaskConical className="w-4 h-4 mr-2" />Test / Simulation</TabsTrigger>
-          <TabsTrigger value="ledgersettings"><BookOpen className="w-4 h-4 mr-2" />Ledger Settings</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto mb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <TabsList className="inline-flex w-max gap-1">
+            <TabsTrigger value="yearend"><Lock className="w-4 h-4 mr-1.5" />Year-End Closure</TabsTrigger>
+            <TabsTrigger value="policy"><ShieldAlert className="w-4 h-4 mr-1.5" />Policy Config</TabsTrigger>
+            <TabsTrigger value="adjustments"><Calculator className="w-4 h-4 mr-1.5" />Manual Adjustments</TabsTrigger>
+            <TabsTrigger value="maintenance"><Shield className="w-4 h-4 mr-1.5" />Maintenance</TabsTrigger>
+            <TabsTrigger value="negative"><AlertTriangle className="w-4 h-4 mr-1.5" />Negative Leave</TabsTrigger>
+            <TabsTrigger value="testmode"><FlaskConical className="w-4 h-4 mr-1.5" />Test / Simulation</TabsTrigger>
+            <TabsTrigger value="ledgersettings"><BookOpen className="w-4 h-4 mr-1.5" />Ledger Settings</TabsTrigger>
+            <TabsTrigger value="emailsettings"><Mail className="w-4 h-4 mr-1.5" />Email Settings</TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ── Year-End Closure Tab ── */}
         <TabsContent value="yearend" className="space-y-4">
@@ -769,6 +799,173 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
             </Card>
           </div>
         </TabsContent>
+        {/* ── Email Settings Tab ── */}
+        <TabsContent value="emailsettings" className="space-y-6">
+
+          {/* Hero status banner */}
+          <div className={`flex items-center justify-between p-5 rounded-xl border-2 transition-all ${
+            emailEnabled
+              ? 'bg-green-50 border-green-300'
+              : 'bg-slate-100 border-slate-300'
+          }`}>
+            <div className="flex items-center gap-4">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-sm ${
+                emailEnabled ? 'bg-green-500' : 'bg-slate-400'
+              }`}>
+                {emailEnabled
+                  ? <MailCheck className="w-6 h-6 text-white" />
+                  : <MailX className="w-6 h-6 text-white" />}
+              </div>
+              <div>
+                <p className={`font-bold text-base ${ emailEnabled ? 'text-green-800' : 'text-slate-600' }`}>
+                  Email Communication is {emailEnabled ? 'Enabled' : 'Disabled'}
+                </p>
+                <p className={`text-sm mt-0.5 ${ emailEnabled ? 'text-green-600' : 'text-slate-500' }`}>
+                  {emailEnabled
+                    ? 'The system is actively sending and receiving emails.'
+                    : 'All email activity is currently paused.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Pill toggle switch */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={emailEnabled}
+              onClick={() => setEmailEnabled(!emailEnabled)}
+              className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                emailEnabled
+                  ? 'bg-green-500 focus:ring-green-400'
+                  : 'bg-slate-300 focus:ring-slate-400'
+              }`}
+            >
+              <span className="sr-only">Toggle email</span>
+              <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition-transform duration-200 ${
+                emailEnabled ? 'translate-x-8' : 'translate-x-0'
+              }`} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* Left: Controls card */}
+            <Card className="shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-indigo-600" /> Communication Channels
+                </CardTitle>
+                <CardDescription>Current status of each email channel based on the master toggle above.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+
+                {/* Outbound */}
+                <div className={`flex items-start gap-3 p-4 rounded-lg border ${
+                  emailEnabled
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    emailEnabled ? 'bg-green-100' : 'bg-slate-200'
+                  }`}>
+                    <Send className={`w-4 h-4 ${ emailEnabled ? 'text-green-600' : 'text-slate-400' }`} />
+                  </div>
+                  <div>
+                    <p className={`text-sm font-semibold ${ emailEnabled ? 'text-green-800' : 'text-slate-500' }`}>
+                      Outbound — System → Employees
+                    </p>
+                    <p className={`text-xs mt-1 leading-relaxed ${ emailEnabled ? 'text-green-700' : 'text-slate-400' }`}>
+                      {emailEnabled
+                        ? 'Leave approvals, rejections, and reminder emails are actively being sent.'
+                        : 'Suppressed. Employees will not receive any email notifications.'}
+                    </p>
+                  </div>
+                  <span className={`ml-auto shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                    emailEnabled ? 'bg-green-200 text-green-800' : 'bg-slate-200 text-slate-500'
+                  }`}>
+                    {emailEnabled ? 'Active' : 'Off'}
+                  </span>
+                </div>
+
+                {/* Inbound */}
+                <div className={`flex items-start gap-3 p-4 rounded-lg border ${
+                  emailEnabled
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    emailEnabled ? 'bg-green-100' : 'bg-slate-200'
+                  }`}>
+                    <Inbox className={`w-4 h-4 ${ emailEnabled ? 'text-green-600' : 'text-slate-400' }`} />
+                  </div>
+                  <div>
+                    <p className={`text-sm font-semibold ${ emailEnabled ? 'text-green-800' : 'text-slate-500' }`}>
+                      Inbound — Employees → System
+                    </p>
+                    <p className={`text-xs mt-1 leading-relaxed ${ emailEnabled ? 'text-green-700' : 'text-slate-400' }`}>
+                      {emailEnabled
+                        ? 'Employee email submissions (leave requests, replies) are being processed.'
+                        : 'Paused. Inbound employee emails are not being processed.'}
+                    </p>
+                  </div>
+                  <span className={`ml-auto shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                    emailEnabled ? 'bg-green-200 text-green-800' : 'bg-slate-200 text-slate-500'
+                  }`}>
+                    {emailEnabled ? 'Active' : 'Off'}
+                  </span>
+                </div>
+
+                <Button
+                  className={`w-full mt-2 ${ emailEnabled ? 'bg-green-600 hover:bg-green-700' : '' }`}
+                  variant={emailEnabled ? 'default' : 'outline'}
+                  onClick={handleSaveEmailSetting}
+                  disabled={savingEmailSetting}
+                >
+                  {savingEmailSetting
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</>
+                    : <><Mail className="w-4 h-4 mr-2" />Save Email Settings</>}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Right: Info card */}
+            <Card className="bg-slate-50 border-dashed shadow-none">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-slate-600 flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-500" /> When should you disable emails?
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm text-slate-600">
+                <p className="text-slate-500 leading-relaxed">
+                  Use this setting to temporarily pause all email activity without affecting
+                  any in-system leave workflows.
+                </p>
+                <ul className="space-y-2">
+                  {[
+                    { icon: Shield, text: 'All leave actions still work normally in the system' },
+                    { icon: MailX, text: "Notifications are suppressed — employees won't be emailed" },
+                    { icon: Inbox, text: 'Inbound email-to-leave requests will be queued / ignored' },
+                    { icon: MailCheck, text: 'Re-enabling resumes normal email flow immediately' },
+                    { icon: BookOpen, text: 'Audit log records every toggle action for traceability' },
+                  ].map(({ icon: Icon, text }, i) => (
+                    <li key={i} className="flex items-start gap-2 text-slate-500 text-xs">
+                      <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-400" />
+                      {text}
+                    </li>
+                  ))}
+                </ul>
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                    ⚠️ This setting does not affect <strong>in-app notifications</strong> —
+                    employees will still see status updates in their dashboard.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+          </div>
+        </TabsContent>
+
       </Tabs>
     </div>
   )

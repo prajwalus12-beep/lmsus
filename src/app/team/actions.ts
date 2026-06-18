@@ -107,6 +107,7 @@ export async function updateEmployee(
   data: {
     name: string
     role: string
+    departmentId?: string
     status?: string
     lastWorkingDay?: string | null
     probationEndDate?: string | null
@@ -120,6 +121,7 @@ export async function updateEmployee(
     .update({
       name: data.name,
       role: data.role,
+      department_id: data.departmentId,
       status: data.status,
       last_working_day: data.lastWorkingDay ? new Date(data.lastWorkingDay).toISOString() : null,
       probation_end_date: data.probationEndDate ? new Date(data.probationEndDate).toISOString() : null,

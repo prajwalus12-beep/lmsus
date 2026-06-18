@@ -36,7 +36,15 @@ export function HolidaysClient() {
     try {
       const res = await fetch("/api/holidays")
       const data = await res.json()
-      setHolidays(data)
+      if (!res.ok) {
+        toast.error(data?.error || "Failed to load holidays")
+        setHolidays([])
+        return
+      }
+      setHolidays(Array.isArray(data) ? data : [])
+    } catch (err) {
+      toast.error("Network error loading holidays")
+      setHolidays([])
     } finally {
       setLoading(false)
     }

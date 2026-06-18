@@ -27,6 +27,7 @@ export default async function SettingsPage() {
   const testMode = testModeRows?.[0] || null
   const configMap = Object.fromEntries((configs || []).map((c: any) => [c.key, c.value]))
   const showClBalanceToEmployee = configMap['SHOW_CL_BALANCE_TO_EMPLOYEE'] === 'true'
+  const emailEnabled = configMap['EMAIL_ENABLED'] !== 'false' // default ON if not set
 
   return (
     <SettingsClient
@@ -80,6 +81,7 @@ export default async function SettingsPage() {
       } : null}
       users={users || []}
       showClBalanceToEmployee={showClBalanceToEmployee}
+      emailEnabled={emailEnabled}
       initialConfigs={configMap}
     />
   )

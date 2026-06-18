@@ -112,7 +112,12 @@ export function AddEmployeeDialog({ onRefresh }: { onRefresh: () => void }) {
             <div className="space-y-2">
               <Label>Role</Label>
               <Select value={formData.role} onValueChange={v => v && setFormData({...formData, role: v})}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue>
+                    {formData.role === "ADMIN" ? "Admin / HR" : 
+                     formData.role === "MANAGER" ? "Manager" : "Employee"}
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="EMPLOYEE">Employee</SelectItem>
                   <SelectItem value="MANAGER">Manager</SelectItem>
@@ -123,7 +128,11 @@ export function AddEmployeeDialog({ onRefresh }: { onRefresh: () => void }) {
             <div className="space-y-2">
               <Label>Department*</Label>
               <Select value={formData.departmentId} onValueChange={v => v && setFormData({...formData, departmentId: v})}>
-                <SelectTrigger><SelectValue placeholder="Select Dept" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Dept">
+                    {departments.find(d => d.id === formData.departmentId)?.name}
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {departments.map(d => (
                     <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>

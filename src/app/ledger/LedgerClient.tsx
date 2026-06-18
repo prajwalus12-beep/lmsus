@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { toast } from "sonner"
+import { EmployeeStatusBadge } from "@/components/EmployeeStatusBadge"
 
 type LedgerEntry = {
   id: string
@@ -37,6 +38,7 @@ type LedgerEntry = {
 type UserInfo = {
   id: string
   name: string
+  status: string
   department: string
   openingCl: number
   openingPl: number
@@ -45,6 +47,7 @@ type UserInfo = {
 type AllUser = {
   id: string
   name: string
+  status: string
   department: { name: string } | null
 }
 
@@ -134,6 +137,7 @@ export function LedgerClient({
           ...prev,
           id: data.user?.id ?? userId,
           name: data.user?.name ?? prev.name,
+          status: data.user?.status ?? prev.status,
           department: data.user?.department ?? prev.department,
           openingCl: data.balance?.openingCl ?? prev.openingCl,
           openingPl: data.balance?.openingPl ?? prev.openingPl,
@@ -351,8 +355,11 @@ export function LedgerClient({
             {selectedUser.name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()}
           </div>
           <div>
-            <p className="font-semibold leading-none">{selectedUser.name}</p>
-            <p className="text-xs text-slate-400">{selectedUser.department}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold leading-none">{selectedUser.name}</p>
+              <EmployeeStatusBadge status={selectedUser.status} />
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">{selectedUser.department}</p>
           </div>
         </div>
       </div>

@@ -36,6 +36,7 @@ export default async function ReportsPage() {
     return {
       id: user.id,
       name: user.name,
+      status: user.status,
       department: deptName,
       // Opening balances
       openingPl: balance?.opening_pl ?? 0,

@@ -8,12 +8,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Mail, User as UserIcon, ShieldCheck, Loader2, Lock } from "lucide-react"
 import { toast } from "sonner"
+import { EmployeeStatusBadge } from "@/components/EmployeeStatusBadge"
 
 export function ProfileClient() {
   const { data: session } = useSession()
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
   const [commEmail, setCommEmail] = useState("")
+  const [status, setStatus] = useState("")
   
   // Password change states
   const [oldPassword, setOldPassword] = useState("")
@@ -27,6 +29,7 @@ export function ProfileClient() {
         .then(res => res.json())
         .then(data => {
           setCommEmail(data.communicationEmail || "")
+          setStatus(data.status || "")
           setFetching(false)
         })
     }
@@ -93,9 +96,12 @@ export function ProfileClient() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">My Profile</h1>
-        <p className="text-slate-500">Manage your account settings and notification preferences.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">My Profile</h1>
+          <p className="text-slate-500">Manage your account settings and notification preferences.</p>
+        </div>
+        <EmployeeStatusBadge status={status} className="scale-110" />
       </div>
 
       <Card>
@@ -119,7 +125,7 @@ export function ProfileClient() {
               <Label className="text-slate-500">Role</Label>
               <div className="flex items-center gap-1 text-indigo-700">
                 <ShieldCheck className="w-4 h-4" />
-                <span className="text-xs font-bold">{(session?.user as any)?.role}</span>
+                <span className="text-xs font-bold uppercase">{(session?.user as any)?.role}</span>
               </div>
             </div>
           </div>

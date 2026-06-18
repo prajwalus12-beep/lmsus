@@ -1,28 +1,50 @@
-const { PrismaClient } = require('@prisma/client')
-const prisma = new PrismaClient()
+const { createClient } = require('@supabase/supabase-js')
+const fs = require('fs')
+const path = require('path')
+
+function loadEnv() {
+  const envPath = path.join(__dirname, '..', '.env')
+  if (!fs.existsSync(envPath)) return {}
+  const content = fs.readFileSync(envPath, 'utf8')
+  const env = {}
+  content.split('\n').forEach(line => {
+    const [key, ...value] = line.split('=')
+    if (key && value) env[key.trim()] = value.join('=').trim().replace(/^["']|["']$/g, '')
+  })
+  return env
+}
+
+const env = loadEnv()
+const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_KEY)
 
 async function main() {
-  const configs = [
-    { key: 'ACCRUAL_RATE_PL', value: '1.5', description: 'PL accrual rate per month' },
-    { key: 'ACCRUAL_BASE_DAYS', value: '20', description: 'Base working days for full PL accrual' },
-    { key: 'MAX_CARRY_FORWARD_PL', value: '30', description: 'Maximum PL days that can be carried forward' },
-    { key: 'MIN_WORKED_DAYS_FOR_PL', value: '15', description: 'Minimum days to work in a month to be eligible for PL' },
-    { key: 'PROBATION_PERIOD_MONTHS', value: '6', description: 'Probation period in months' },
-    { key: 'MAX_NEGATIVE_LEAVE', value: '-5', description: 'Maximum allowed negative leave balance' }
-  ]
+  const { data, error } = await supabase
+    .from('system_configs')
+    .select('*')
+    .eq('key', 'ENABLE_EMAIL_NOTIFICATIONS')
 
-  for (const config of configs) {
-    await prisma.systemConfig.upsert({
-      where: { key: config.key },
-      update: {},
-      create: config,
-    })
-    console.log(`Ensured config: ${config.key}`)
+  if (error) {
+    console.error('Error fetching config:', error)
+    return
+  }
+
+  if (data.length === 0) {
+    const { error: iError } = await supabase
+      .from('system_configs')
+      .insert({
+        key: 'ENABLE_EMAIL_NOTIFICATIONS',
+        value: 'true',
+        description: 'Enable/Disable all outgoing email notifications'
+      })
+    
+    if (iError) {
+      console.error('Error inserting config:', iError)
+    } else {
+      console.log('Successfully added ENABLE_EMAIL_NOTIFICATIONS config.')
+    }
+  } else {
+    console.log('ENABLE_EMAIL_NOTIFICATIONS config already exists:', data[0])
   }
 }
 
 main()
-  .catch(e => console.error(e))
-  .finally(async () => {
-    await prisma.$disconnect()
-  })

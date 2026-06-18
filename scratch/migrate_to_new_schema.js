@@ -43,6 +43,19 @@ async function migrateData() {
   const legacyDeptIdToNewId = {}
   legacyDepts.forEach(d => legacyDeptIdToNewId[d.id] = deptNameToNewId[d.name])
 
+  // 1.1 Update Profiles with Department IDs
+  console.log('Updating Profiles with Department IDs...')
+  for (const u of legacyUsers) {
+    const uuid = legacyIdToUuid[u.id]
+    const newDeptId = legacyDeptIdToNewId[u.departmentId]
+    console.log(`User: ${u.name}, Legacy Dept ID: ${u.departmentId}, New Dept ID: ${newDeptId}, UUID: ${uuid}`)
+    if (uuid && newDeptId) {
+      const { error } = await supabase.from('profiles').update({ department_id: newDeptId }).eq('id', uuid)
+      if (error) console.error(`  Error updating profile ${uuid}:`, error.message)
+      else console.log(`  Updated ${u.name} with Dept ID ${newDeptId}`)
+    }
+  }
+
   // 2. Migrate Leave Balances
   console.log('Migrating Leave Balances...')
   const { data: legacyBalances } = await supabase.from('LeaveBalance').select('*')
