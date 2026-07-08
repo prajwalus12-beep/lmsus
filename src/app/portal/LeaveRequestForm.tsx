@@ -103,7 +103,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
     setLoading(true)
     
     try {
-      await submitLeaveRequest({
+      const res = await submitLeaveRequest({
         userId,
         type, // Server re-verifies logic
         startDate,
@@ -114,6 +114,11 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         attachmentUrl: documentUrl,
         halfDay
       })
+      
+      if (!res.success) {
+        toast.error(res.error || "Failed to submit leave request. Please try again.")
+        return
+      }
       
       if (wouldGoNegative) {
         toast.warning(`Leave submitted with negative balance. Balance will be ${netBalance} days. Recovery may apply on exit.`)

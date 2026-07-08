@@ -18,7 +18,8 @@ export async function submitLeaveRequest(data: {
   attachmentUrl?: string
   halfDay?: string
 }) {
-  let { userId, type, startDate, endDate, reason, isNegative, negativeAmount, attachmentUrl, halfDay = "NONE" } = data
+  try {
+    let { userId, type, startDate, endDate, reason, isNegative, negativeAmount, attachmentUrl, halfDay = "NONE" } = data
   
   // Verify session matches userId
   const session = await getServerSession()
@@ -360,9 +361,13 @@ export async function submitLeaveRequest(data: {
     ))
   }
 
-  revalidatePath("/portal")
-  revalidatePath("/")
-  return { success: true, request }
+    revalidatePath("/portal")
+    revalidatePath("/")
+    return { success: true, request }
+  } catch (err: any) {
+    console.error("submitLeaveRequest Error:", err)
+    return { success: false, error: err.message || "Failed to submit leave request." }
+  }
 }
 
 export async function submitCompOffWork(data: {
@@ -371,7 +376,8 @@ export async function submitCompOffWork(data: {
   hoursWorked: number
   reason: string
 }) {
-  const { userId, dateWorked, hoursWorked, reason } = data
+  try {
+    const { userId, dateWorked, hoursWorked, reason } = data
   
   // Verify session matches userId
   const session = await getServerSession()
@@ -524,4 +530,8 @@ export async function submitCompOffWork(data: {
 
   revalidatePath("/portal")
   return { success: true, entry }
+  } catch (err: any) {
+    console.error("submitCompOffWork Error:", err)
+    return { success: false, error: err.message || "Failed to submit request." }
+  }
 }

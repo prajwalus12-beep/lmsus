@@ -35,10 +35,12 @@ export function CompOffRequest({ userId }: { userId: string }) {
         setDateWorked("");
         setHoursWorked("");
         setReason("");
+      } else {
+        toast.error(res.error || "Failed to submit request.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Failed to submit request.");
+      toast.error(err.message || "Failed to submit request.");
     } finally {
       setLoading(false);
     }
