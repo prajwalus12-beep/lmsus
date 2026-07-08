@@ -43,3 +43,20 @@ next-env.d.ts
 /src/generated/prisma
 
 .vercel
+
+# Local SQLite databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Scratch scripts and temporary files
+/scratch/
+data_backup.json
+more_pdf_text*.txt
+parse_pdf.js
+
+# Project documents
+lmsus_overview.txt
+lms_test_case_execution_sheet.txt
+/agent_docs/

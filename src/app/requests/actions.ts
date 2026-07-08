@@ -61,7 +61,8 @@ export async function approveRequest(id: string) {
 
   // If HR approved, we need to deduct from balance
   if (status === "HR_APPROVED") {
-    const leaveType = (effectiveType || request.type).toLowerCase() // Use effectiveType (Rule 37)
+    const rawLeaveType = (effectiveType || request.type).toLowerCase() // Use effectiveType (Rule 37)
+    const leaveType = rawLeaveType === "sl" ? "cl" : rawLeaveType
     
     const { data: balance } = await supabaseAdmin
       .from('leave_balances')
@@ -74,12 +75,18 @@ export async function approveRequest(id: string) {
       const currentUsed = balance[`${leaveType}_used`] || 0
       const newVal = currentVal - days
 
+      const updateData: any = {
+        [leaveType]: newVal,
+        [`${leaveType}_used`]: currentUsed + days
+      }
+
+      if (rawLeaveType === "sl") {
+        updateData.sl_used = (balance.sl_used || 0) + days
+      }
+
       const { error: updateBalError } = await supabaseAdmin
         .from('leave_balances')
-        .update({
-          [leaveType]: newVal,
-          [`${leaveType}_used`]: currentUsed + days
-        })
+        .update(updateData)
         .eq('user_id', request.user_id)
 
       if (updateBalError) throw new Error(updateBalError.message)

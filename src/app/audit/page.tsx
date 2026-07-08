@@ -22,19 +22,30 @@ export default async function AuditPage() {
     console.error("Error fetching audit logs:", error)
   }
 
-  const mappedLogs = (logs || []).map((log: any) => ({
-    id: log.id,
-    userName: log.profiles?.name || 'System',
-    userRole: log.profiles?.role || 'SYSTEM',
-    userStatus: log.profiles?.status || 'ACTIVE',
-    action: log.action,
-    entity: log.entity,
-    entityId: log.entity_id,
-    oldValue: log.old_value,
-    newValue: log.new_value,
-    metadata: log.metadata ? JSON.parse(log.metadata) : null,
-    createdAt: new Date(log.created_at).toISOString()
-  }))
+  const mappedLogs = (logs || []).map((log: any) => {
+    let parsedMetadata = null
+    if (log.metadata) {
+      try {
+        parsedMetadata = typeof log.metadata === 'string' ? JSON.parse(log.metadata) : log.metadata
+      } catch (e) {
+        parsedMetadata = { note: log.metadata }
+      }
+    }
+
+    return {
+      id: log.id,
+      userName: log.profiles?.name || 'System',
+      userRole: log.profiles?.role || 'SYSTEM',
+      userStatus: log.profiles?.status || 'ACTIVE',
+      action: log.action,
+      entity: log.entity,
+      entityId: log.entity_id,
+      oldValue: log.old_value,
+      newValue: log.new_value,
+      metadata: parsedMetadata,
+      createdAt: new Date(log.created_at).toISOString()
+    }
+  })
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

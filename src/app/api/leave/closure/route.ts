@@ -38,8 +38,14 @@ export async function POST(req: NextRequest) {
 
     if (balError) throw new Error(balError.message)
 
+    const { data: maxCfConfig } = await supabase
+      .from('system_configs')
+      .select('value')
+      .eq('key', 'MAX_CARRY_FORWARD_PL')
+      .maybeSingle()
+
     const NEXT_YEAR = year + 1
-    const MAX_PL_CARRY_FORWARD = 30 // Rule 47
+    const MAX_PL_CARRY_FORWARD = maxCfConfig ? parseFloat(maxCfConfig.value) : 30 // Rule 47
     const CL_ENTITLEMENT = 7 // Standard CL Entitlement
 
     const carryForwardHistoryInserts = []

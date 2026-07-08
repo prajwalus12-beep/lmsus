@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin"
 import { revalidatePath } from "next/cache"
 import { calculateRequestedDays } from "@/lib/leaveCalculator"
 import { sendEmail } from "@/lib/email"
+import { getSystemDate } from "@/lib/systemDate"
 
 export async function submitLeaveRequest(data: {
   userId: string
@@ -25,26 +26,50 @@ export async function submitLeaveRequest(data: {
     throw new Error("Unauthorized: Session mismatch or not logged in.")
   }
 
+  const parseAsUTCDate = (dateStr: string | Date) => {
+    if (dateStr instanceof Date) return dateStr
+    const isoStr = typeof dateStr === 'string' ? dateStr.split('T')[0] : ''
+    const [y, m, d] = isoStr.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d))
+  }
+
   const supabase = await getSupabaseServer()
-  const startObj = new Date(startDate)
-  const leaveYear = startObj.getFullYear()
+  const startObj = parseAsUTCDate(startDate)
+  const endObj = parseAsUTCDate(endDate)
+  const leaveYear = startObj.getUTCFullYear()
 
   const yearStart = `${leaveYear}-01-01`
   const yearEnd = `${leaveYear}-12-31`
 
   const [
-    { data: user },
-    { data: holidays },
-    { data: sandwichConfig },
-    { data: probationConfig }
+    userRes,
+    holidaysRes,
+    sandwichRes,
+    probationRes,
+    maxNegativeRes,
+    existingLeavesRes
   ] = await Promise.all([
-    supabase.from('profiles').select('name, email, communication_email, join_date').eq('id', userId).single(),
+    supabase.from('profiles').select('name, email, communication_email, join_date, probation_end_date').eq('id', userId).single(),
     supabase.from('holidays').select('*').gte('date', yearStart).lte('date', yearEnd),
     supabase.from('system_configs').select('value').eq('key', 'weekend_sandwich_rule').single(),
-    supabase.from('system_configs').select('value').eq('key', 'PROBATION_PERIOD_MONTHS').single()
+    supabase.from('system_configs').select('value').eq('key', 'PROBATION_PERIOD_MONTHS').single(),
+    supabase.from('system_configs').select('value').eq('key', 'MAX_NEGATIVE_LEAVE').maybeSingle(),
+    supabaseAdmin.from('leave_requests').select('start_date, end_date, type').eq('user_id', userId).in('status', ['PENDING', 'L1_APPROVED', 'HR_APPROVED'])
   ]);
+
+  console.log("SUBMIT DEBUG - User Query:", userRes);
+  console.log("SUBMIT DEBUG - Holidays Query:", holidaysRes);
+  console.log("SUBMIT DEBUG - Leaves Query:", existingLeavesRes);
+
+  const user = userRes.data;
+  const holidays = holidaysRes.data;
+  const sandwichConfig = sandwichRes.data;
+  const probationConfig = probationRes.data;
+  const maxNegativeConfig = maxNegativeRes.data;
+  const existingLeaves = existingLeavesRes.data;
   
   const probationMonths = parseInt(probationConfig?.value || "6")
+  const maxNegativeLimit = parseFloat(maxNegativeConfig?.value || "-5")
 
   const holidayDates = new Set((holidays || []).map((h: any) => h.date.split('T')[0]))
   const isSandwichEnabled = sandwichConfig?.value === "true"
@@ -52,7 +77,7 @@ export async function submitLeaveRequest(data: {
   const isHalfDay = halfDay !== "NONE"
   const { days, convertedToPl } = calculateRequestedDays(
     startObj, 
-    new Date(endDate), 
+    endObj, 
     holidayDates, 
     isSandwichEnabled, 
     type, 
@@ -64,12 +89,118 @@ export async function submitLeaveRequest(data: {
     type = "PL"
   }
 
-  // Rule 50: Probation Check (Apply AFTER potential conversion)
+  // 1. Block Half-day for PL
+  if (type === "PL" && isHalfDay) {
+    throw new Error("Privilege Leave (PL) cannot be applied as a half day.")
+  }
+
+  // 2. CL & SL Duration Caps
+  if (type === "CL" && days > 1.0) {
+    throw new Error("Casual Leave (CL) requests are limited to a maximum of 1 day.")
+  }
+  if (type === "SL" && days > 2.0) {
+    throw new Error("Sick Leave (SL) requests are limited to a maximum of 2 days.")
+  }
+
+  // 3. Adjacency Blocks (Friday-Monday and Holidays)
+  if (type === "CL" || type === "PL") {
+    const getDatesSet = (start: Date, end: Date) => {
+      const dates = new Set<string>()
+      let curr = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()))
+      const finalEnd = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()))
+      while (curr <= finalEnd) {
+        dates.add(curr.toISOString().split('T')[0])
+        curr.setUTCDate(curr.getUTCDate() + 1)
+      }
+      return dates
+    }
+
+    const requestedDates = getDatesSet(startObj, endObj)
+    const existingClPlDates = new Set<string>()
+    for (const req of (existingLeaves || [])) {
+      if (req.type === 'CL' || req.type === 'PL') {
+        const dates = getDatesSet(parseAsUTCDate(req.start_date), parseAsUTCDate(req.end_date))
+        for (const d of dates) {
+          existingClPlDates.add(d)
+        }
+      }
+    }
+
+    const allClPlDates = new Set([...existingClPlDates, ...requestedDates])
+
+    // Friday-Monday Adjacency Check
+    for (const dateStr of requestedDates) {
+      const d = parseAsUTCDate(dateStr)
+      const day = d.getUTCDay() // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+      if (day === 5) {
+        const mon = new Date(d)
+        mon.setUTCDate(mon.getUTCDate() + 3)
+        const monStr = mon.toISOString().split('T')[0]
+        if (allClPlDates.has(monStr)) {
+          throw new Error("Cannot apply: taking CL or PL on both Friday and Monday is not allowed.")
+        }
+      }
+      if (day === 1) {
+        const fri = new Date(d)
+        fri.setUTCDate(fri.getUTCDate() - 3)
+        const friStr = fri.toISOString().split('T')[0]
+        if (allClPlDates.has(friStr)) {
+          throw new Error("Cannot apply: taking CL or PL on both Friday and Monday is not allowed.")
+        }
+      }
+    }
+
+    // National Holiday Adjacency Check
+    for (const dateStr of requestedDates) {
+      const d = parseAsUTCDate(dateStr)
+      // Check day before
+      const prev = new Date(d)
+      prev.setUTCDate(prev.getUTCDate() - 1)
+      const prevStr = prev.toISOString().split('T')[0]
+      if (holidayDates.has(prevStr)) {
+        throw new Error(`Cannot apply: leave cannot be taken immediately before a national holiday (${prevStr}).`)
+      }
+      // Check day after
+      const next = new Date(d)
+      next.setUTCDate(next.getUTCDate() + 1)
+      const nextStr = next.toISOString().split('T')[0]
+      if (holidayDates.has(nextStr)) {
+        throw new Error(`Cannot apply: leave cannot be taken immediately after a national holiday (${nextStr}).`)
+      }
+    }
+  }
+
+  // 4. Backend Negative Leave Limit Validation (SL/CL mapped to cl, PL mapped to pl)
+  const activeBucket = (type === 'SL' || type === 'CL') ? 'cl' : type.toLowerCase()
+  const { data: balance } = await supabaseAdmin
+    .from('leave_balances')
+    .select('*')
+    .eq('user_id', userId)
+    .single()
+
+  const currentBalance = balance ? balance[activeBucket] || 0 : 0
+  const netBalance = currentBalance - days
+  if (netBalance < maxNegativeLimit) {
+    throw new Error(`Cannot apply: Net balance would be ${netBalance.toFixed(1)}, below the minimum allowed limit of ${maxNegativeLimit} days.`)
+  }
+  if (type === 'COMP' && netBalance < 0) {
+    throw new Error("Compensatory Off cannot go into negative balance.")
+  }
+
+  // Rule 50: Probation Check (Apply AFTER potential conversion, using system override date)
   if (type === 'PL') {
-    const probationLimit = new Date()
-    probationLimit.setMonth(probationLimit.getMonth() - probationMonths)
-    if (user && new Date(user.join_date) > probationLimit) {
-      throw new Error(`Privilege Leave (PL) cannot be applied during the ${probationMonths}-month probation period (Rule 50).`)
+    const systemDate = await getSystemDate()
+    if (user && user.probation_end_date) {
+      const probationEnd = new Date(user.probation_end_date)
+      if (systemDate < probationEnd) {
+        throw new Error(`Privilege Leave (PL) cannot be applied during the probation period (ends ${new Date(user.probation_end_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}).`)
+      }
+    } else if (user) {
+      const probationLimit = new Date(systemDate)
+      probationLimit.setMonth(probationLimit.getMonth() - probationMonths)
+      if (new Date(user.join_date) > probationLimit) {
+        throw new Error(`Privilege Leave (PL) cannot be applied during the ${probationMonths}-month probation period (Rule 50).`)
+      }
     }
   }
 
@@ -79,8 +210,8 @@ export async function submitLeaveRequest(data: {
     .insert({
       user_id: userId,
       type,
-      start_date: new Date(startDate).toISOString(),
-      end_date: new Date(endDate).toISOString(),
+      start_date: startObj.toISOString(),
+      end_date: endObj.toISOString(),
       half_day: halfDay,
       reason,
       status: "PENDING",

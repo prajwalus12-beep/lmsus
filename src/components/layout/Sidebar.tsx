@@ -31,6 +31,7 @@ const navItems = [
   { name: "Reports", href: "/reports", icon: FileText },
   { name: "Opening Balances", href: "/settings/balances", icon: Database },
   { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Leave Rules", href: "/rules", icon: BookOpen },
 ];
 
 export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () => void }) {
@@ -50,7 +51,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
   if (role === "EMPLOYEE") {
     // Remove Admin/Manager modules for Employees
     visibleNavItems = navItems.filter(item => 
-      ["My Portal", "Leave Ledger", "Leave Register", "Calendar", "Holidays", "Team Directory", "Profile"].includes(item.name)
+      ["My Portal", "Leave Ledger", "Leave Register", "Calendar", "Holidays", "Team Directory", "Profile", "Leave Rules"].includes(item.name)
     );
   } else if (role === "MANAGER") {
     // Managers see everything except deep settings
@@ -58,9 +59,8 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
       !["Opening Balances", "Settings"].includes(item.name)
     );
   } else if (role === "ADMIN") {
-    // Admin sees everything except maybe personal portal (unless they want it)
-    // Most admins still need a portal to apply for their own leave
-    visibleNavItems = navItems;
+    // Admin sees everything except personal portal (Rule 3.0 / LMS-AUT-04)
+    visibleNavItems = navItems.filter(item => item.name !== "My Portal");
   }
 
   return (

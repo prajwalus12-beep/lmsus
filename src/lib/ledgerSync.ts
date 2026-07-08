@@ -107,7 +107,7 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
       let clDebit = null, plDebit = null
       if (effectiveType === 'CL') { clDebit = days; clBal -= days; clUsed += days; }
       else if (effectiveType === 'PL') { plDebit = days; plBal -= days; plUsed += days; }
-      else if (effectiveType === 'SL') { slUsed += days; }
+      else if (effectiveType === 'SL') { clDebit = days; clBal -= days; slUsed += days; }
       else if (effectiveType === 'COMP') { compBal -= days; }
       else continue
 

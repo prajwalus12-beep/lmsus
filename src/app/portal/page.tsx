@@ -15,6 +15,10 @@ export default async function PortalPage() {
     redirect("/login")
   }
 
+  if (session.user.role === "ADMIN") {
+    redirect("/")
+  }
+
   const userId = session.user.id
 
   // Use supabaseAdmin to bypass RLS for fetching
@@ -32,9 +36,25 @@ export default async function PortalPage() {
 
   if (!balances) return <div className="p-8 text-center text-red-500">User balances not found. Contact HR.</div>;
 
-  const totalAllowed = 14 + 14 + 5; 
-  const totalUsed = (30 - balances.pl) + (14 - (balances.cl + balances.sl));
-  const wellnessScore = Math.max(0, 100 - (totalUsed / totalAllowed) * 100);
+  console.log("=== PORTAL DEBUG ===");
+  console.log("Logged In User Email:", session.user.email);
+  console.log("Raw Balances Object from DB:", JSON.stringify(balances));
+
+  const plAllowed = (balances.opening_pl || 0) + (balances.pl_accrued || 0);
+  const clAllowed = balances.opening_cl || 7;
+  const slAllowed = (balances.sl || 0) + (balances.sl_used || 0);
+
+  const totalAllowed = plAllowed + clAllowed + slAllowed;
+  const totalUsed = (balances.pl_used || 0) + (balances.cl_used || 0) + (balances.sl_used || 0);
+
+  const wellnessScore = totalAllowed > 0
+    ? Math.min(100, Math.max(0, 100 - (totalUsed / totalAllowed) * 100))
+    : 100;
+
+  console.log("Calculated Allowed:", { plAllowed, clAllowed, slAllowed, totalAllowed });
+  console.log("Calculated Used:", { plUsed: balances.pl_used, clUsed: balances.cl_used, slUsed: balances.sl_used, totalUsed });
+  console.log("Calculated Wellness Score:", wellnessScore);
+  console.log("====================");
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

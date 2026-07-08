@@ -11,12 +11,11 @@ export async function getSystemDate(): Promise<Date> {
     const { data: override } = await supabase
       .from('system_date_overrides')
       .select('*')
-      .eq('is_test_mode', true)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    if (override && override.override_date) {
+    if (override && override.is_test_mode && override.override_date) {
       return new Date(override.override_date)
     }
   } catch (error) {

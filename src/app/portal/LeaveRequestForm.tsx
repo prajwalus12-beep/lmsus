@@ -28,6 +28,12 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
   const MAX_NEGATIVE = maxNegative || -5 // Rule 44: configurable minimum negative balance
 
   useEffect(() => {
+    if (type === "PL") {
+      setHalfDay("NONE");
+    }
+  }, [type]);
+
+  useEffect(() => {
     async function fetchProjection() {
       if (!startDate || !endDate || !type) {
         setProjectedDays(0);
@@ -41,6 +47,12 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, type, startDate, endDate, isHalfDay: halfDay !== "NONE" })
         });
+        const contentType = res.headers.get("content-type");
+        if (!res.ok || !contentType || !contentType.includes("application/json")) {
+          const text = await res.text();
+          console.error(`Failed to fetch projection: Status ${res.status}. Response: ${text.substring(0, 200)}`);
+          return;
+        }
         const data = await res.json();
         if (data.success) {
           setProjectedDays(data.days);
@@ -65,7 +77,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
   const balanceMap: any = { 
     PL: targetBalances.projectedPl ?? targetBalances.pl, 
     CL: targetBalances.cl, 
-    SL: targetBalances.sl, 
+    SL: targetBalances.cl, // SL comes under CL
     COMP: targetBalances.comp 
   };
   
@@ -111,9 +123,9 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
       setType(""); setStartDate(""); setEndDate(""); setReason(""); setDocumentUrl(""); setHalfDay("NONE");
       setProjectedDays(0);
       setProjectedBalanceMap(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      toast.error("Failed to submit leave request. Please try again.")
+      toast.error(err.message || "Failed to submit leave request. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -138,9 +150,9 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         </div>
         <div className="space-y-2">
           <Label htmlFor="halfDay">Half Day</Label>
-          <Select value={halfDay} onValueChange={(v) => setHalfDay(v || "NONE")}>
+          <Select value={halfDay} onValueChange={(v) => setHalfDay(v || "NONE")} disabled={type === "PL"}>
             <SelectTrigger id="halfDay">
-              <SelectValue placeholder="Select half day" />
+              <SelectValue placeholder={type === "PL" ? "Not allowed for PL" : "Select half day"} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="NONE">None</SelectItem>
