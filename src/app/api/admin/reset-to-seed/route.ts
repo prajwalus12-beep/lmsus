@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       'audit_logs', 'leave_balance_adjustments', 'leave_ledger_entries', 
       'leave_requests', 'comp_off_work_entries', 'negative_leave_trackings', 
       'carry_forward_histories', 'leave_year_closures', 'leave_balances', 
-      'system_configs', 'holidays', 'profiles', 'departments', 
+      'system_configs', 'profiles', 'departments', 
       'weekend_configs', 'system_date_overrides'
     ]
 
@@ -109,14 +109,14 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from('leave_balances').insert(balancesToInsert)
     }
 
-    // 6. Restore holidays
-    await supabaseAdmin.from('holidays').insert(seedData.holidays.map((h: any) => ({
+    // 6. Restore holidays (using upsert so we don't duplicate existing ones)
+    await supabaseAdmin.from('holidays').upsert(seedData.holidays.map((h: any) => ({
       id: h.id,
       date: h.date,
       name: h.name,
       type: h.type,
       created_at: h.createdAt
-    })))
+    })), { onConflict: 'id' })
 
     // 7. Restore configs
     await supabaseAdmin.from('system_configs').insert(seedData.systemConfigs.map((c: any) => ({
