@@ -28,6 +28,7 @@ export default async function LeaveRulesPage() {
   const minWorkedDays = configMap['MIN_WORKED_DAYS_FOR_PL'] || "15";
   const probationMonths = configMap['PROBATION_PERIOD_MONTHS'] || "6";
   const maxNegative = configMap['MAX_NEGATIVE_LEAVE'] || "-5";
+  const isSandwichEnabled = configMap['weekend_sandwich_rule'] === 'true';
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto p-4 md:p-8">
@@ -234,7 +235,7 @@ export default async function LeaveRulesPage() {
             </CardHeader>
             <CardContent className="text-sm text-slate-600 space-y-4">
               <div className="space-y-3.5">
-                {/* Friday-Monday Rule */}
+                 {/* Friday-Monday Rule */}
                 <div className="flex gap-3">
                   <div className="shrink-0 w-6 h-6 rounded-full bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center text-xs font-semibold">
                     FM
@@ -242,7 +243,7 @@ export default async function LeaveRulesPage() {
                   <div>
                     <h4 className="font-semibold text-slate-800 text-sm">Friday &amp; Monday Rule</h4>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Applying for CL or PL on both Friday and Monday is not allowed. This prevents long-weekend bridge abuses without appropriate leave planning.
+                      Applying for CL on both Friday and Monday is not allowed. Privilege Leave (PL) is allowed and bypasses this rule.
                     </p>
                   </div>
                 </div>
@@ -255,7 +256,7 @@ export default async function LeaveRulesPage() {
                   <div>
                     <h4 className="font-semibold text-slate-800 text-sm">National Holiday Adjacency Rule</h4>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Leave cannot be taken immediately before or after a national holiday.
+                      Casual Leave (CL) is blocked if holidays sandwich the CL block on both sides (e.g. Wednesday and Friday are holidays, Thursday is CL), or if a national holiday is sandwiched by CL on both sides (e.g. Tuesday and Thursday are CL, Wednesday is holiday). Holidays on only one side are allowed. PL bypasses this rule.
                     </p>
                   </div>
                 </div>
@@ -279,9 +280,13 @@ export default async function LeaveRulesPage() {
                     SW
                   </div>
                   <div>
-                    <h4 className="font-semibold text-slate-800 text-sm">Sandwich Rule (Disabled)</h4>
+                    <h4 className="font-semibold text-slate-800 text-sm">
+                      Sandwich Rule ({isSandwichEnabled ? 'Enabled' : 'Disabled'})
+                    </h4>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      The weekend and national holiday sandwich rule is disabled. Weekends and holidays falling inside your leave duration do not deduct from your balance. Only scheduled working days are debited.
+                      {isSandwichEnabled
+                        ? 'The weekend and national holiday sandwich rule is enabled. Weekends and holidays falling inside your leave duration are included and deduct from your balance.'
+                        : 'The weekend and national holiday sandwich rule is disabled. Weekends and holidays falling inside your leave duration do not deduct from your balance. Only scheduled working days are debited.'}
                     </p>
                   </div>
                 </div>

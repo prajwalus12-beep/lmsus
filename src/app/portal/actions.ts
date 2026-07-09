@@ -145,8 +145,8 @@ export async function submitLeaveRequest(data: {
     }
   }
 
-  // 3. Adjacency Blocks (Friday-Monday and Holidays)
-  if (type === "CL" || type === "PL") {
+  // 3. Adjacency Blocks (Friday-Monday and Holidays) - Only enforced for Casual Leave (CL)
+  if (type === "CL") {
     const getDatesSet = (start: Date, end: Date) => {
       const dates = new Set<string>()
       let curr = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()))
@@ -159,17 +159,17 @@ export async function submitLeaveRequest(data: {
     }
 
     const requestedDates = getDatesSet(startObj, endObj)
-    const existingClPlDates = new Set<string>()
+    const existingClDates = new Set<string>()
     for (const req of (existingLeaves || [])) {
-      if (req.type === 'CL' || req.type === 'PL') {
+      if (req.type === 'CL') {
         const dates = getDatesSet(parseAsUTCDate(req.start_date), parseAsUTCDate(req.end_date))
         for (const d of dates) {
-          existingClPlDates.add(d)
+          existingClDates.add(d)
         }
       }
     }
 
-    const allClPlDates = new Set([...existingClPlDates, ...requestedDates])
+    const allClDates = new Set([...existingClDates, ...requestedDates])
 
     // Friday-Monday Adjacency Check
     for (const dateStr of requestedDates) {
@@ -179,36 +179,85 @@ export async function submitLeaveRequest(data: {
         const mon = new Date(d)
         mon.setUTCDate(mon.getUTCDate() + 3)
         const monStr = mon.toISOString().split('T')[0]
-        if (allClPlDates.has(monStr)) {
-          throw new Error("Cannot apply: taking CL or PL on both Friday and Monday is not allowed.")
+        if (allClDates.has(monStr)) {
+          throw new Error("Cannot apply: taking CL on both Friday and Monday is not allowed.")
         }
       }
       if (day === 1) {
         const fri = new Date(d)
         fri.setUTCDate(fri.getUTCDate() - 3)
         const friStr = fri.toISOString().split('T')[0]
-        if (allClPlDates.has(friStr)) {
-          throw new Error("Cannot apply: taking CL or PL on both Friday and Monday is not allowed.")
+        if (allClDates.has(friStr)) {
+          throw new Error("Cannot apply: taking CL on both Friday and Monday is not allowed.")
         }
       }
     }
 
     // National Holiday Adjacency Check
-    for (const dateStr of requestedDates) {
-      const d = parseAsUTCDate(dateStr)
-      // Check day before
-      const prev = new Date(d)
+    // 1. CL Block Sandwiched by Holidays Check
+    // Group all active/requested CL dates into contiguous blocks of consecutive days
+    const sortedClDates = Array.from(allClDates).sort()
+    const contiguousBlocks: string[][] = []
+    let currentBlock: string[] = []
+
+    for (const dateStr of sortedClDates) {
+      if (currentBlock.length === 0) {
+        currentBlock.push(dateStr)
+      } else {
+        const lastDate = parseAsUTCDate(currentBlock[currentBlock.length - 1])
+        const currentDate = parseAsUTCDate(dateStr)
+        const diffDays = Math.round((currentDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
+        if (diffDays === 1) {
+          currentBlock.push(dateStr)
+        } else {
+          contiguousBlocks.push(currentBlock)
+          currentBlock = [dateStr]
+        }
+      }
+    }
+    if (currentBlock.length > 0) {
+      contiguousBlocks.push(currentBlock)
+    }
+
+    for (const block of contiguousBlocks) {
+      // Check if this block contains any newly requested date
+      const hasNewRequest = block.some(d => requestedDates.has(d))
+      if (hasNewRequest) {
+        // Date immediately before the block
+        const firstDate = parseAsUTCDate(block[0])
+        const prev = new Date(firstDate)
+        prev.setUTCDate(prev.getUTCDate() - 1)
+        const prevStr = prev.toISOString().split('T')[0]
+
+        // Date immediately after the block
+        const lastDate = parseAsUTCDate(block[block.length - 1])
+        const next = new Date(lastDate)
+        next.setUTCDate(next.getUTCDate() + 1)
+        const nextStr = next.toISOString().split('T')[0]
+
+        if (holidayDates.has(prevStr) && holidayDates.has(nextStr)) {
+          throw new Error(`Cannot apply: CL cannot be sandwiched between national holidays (${prevStr} and ${nextStr}).`)
+        }
+      }
+    }
+
+    // 2. Holiday Sandwiched by CL Check
+    // Check if any national holiday is sandwiched by CL leaves on both sides
+    for (const holStr of Array.from(holidayDates)) {
+      const holDate = parseAsUTCDate(holStr)
+      const prev = new Date(holDate)
       prev.setUTCDate(prev.getUTCDate() - 1)
       const prevStr = prev.toISOString().split('T')[0]
-      if (holidayDates.has(prevStr)) {
-        throw new Error(`Cannot apply: leave cannot be taken immediately before a national holiday (${prevStr}).`)
-      }
-      // Check day after
-      const next = new Date(d)
+
+      const next = new Date(holDate)
       next.setUTCDate(next.getUTCDate() + 1)
       const nextStr = next.toISOString().split('T')[0]
-      if (holidayDates.has(nextStr)) {
-        throw new Error(`Cannot apply: leave cannot be taken immediately after a national holiday (${nextStr}).`)
+
+      if (allClDates.has(prevStr) && allClDates.has(nextStr)) {
+        // Only block if at least one of these sandwiching CL dates is in the newly requested dates
+        if (requestedDates.has(prevStr) || requestedDates.has(nextStr)) {
+          throw new Error(`Cannot apply: National holiday (${holStr}) cannot be sandwiched between CL leaves.`)
+        }
       }
     }
   }

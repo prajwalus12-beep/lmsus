@@ -12,8 +12,8 @@ def calculate_requested_days(start_date: datetime.date, end_date: datetime.date,
     days = 0
     current_date = start_date
     
-    # Rule: PL and SL never have sandwich. CL has it if enabled.
-    apply_sandwich = (effective_type == "CL" and is_sandwich_enabled)
+    # Rule: CL and PL have sandwich if enabled.
+    apply_sandwich = (leave_type in ["CL", "PL"] and is_sandwich_enabled)
     
     while current_date <= end_date:
         # Check if day is weekend (Saturday = 5, Sunday = 6 in python weekday())

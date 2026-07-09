@@ -42,6 +42,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   const [minWorkedDays, setMinWorkedDays] = useState(initialConfigs?.['MIN_WORKED_DAYS_FOR_PL'] || "15")
   const [probationMonths, setProbationMonths] = useState(initialConfigs?.['PROBATION_PERIOD_MONTHS'] || "6")
   const [maxNegative, setMaxNegative] = useState(initialConfigs?.['MAX_NEGATIVE_LEAVE'] || "-5")
+  const [weekendSandwich, setWeekendSandwich] = useState<boolean>(initialConfigs?.['weekend_sandwich_rule'] === 'true')
   const [savingGlobalConfigs, setSavingGlobalConfigs] = useState(false)
   const [resetting, setResetting] = useState(false)
 
@@ -115,6 +116,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
         { key: 'MIN_WORKED_DAYS_FOR_PL', value: minWorkedDays },
         { key: 'PROBATION_PERIOD_MONTHS', value: probationMonths },
         { key: 'MAX_NEGATIVE_LEAVE', value: maxNegative },
+        { key: 'weekend_sandwich_rule', value: String(weekendSandwich) },
       ]
 
       await Promise.all(configs.map(c => 
@@ -350,6 +352,30 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                   <Label>Max Allowed Negative Balance</Label>
                   <Input type="number" value={maxNegative} onChange={e => setMaxNegative(e.target.value)} />
                   <p className="text-xs text-slate-500">Example: -5. Default: -5</p>
+                </div>
+                <div className="space-y-2 flex flex-col justify-end">
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50">
+                    <div>
+                      <Label className="font-semibold text-slate-800">Weekend Sandwich Rule</Label>
+                      <p className="text-xs text-slate-500">Apply sandwich rule to Casual Leave (CL)</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={weekendSandwich}
+                      onClick={() => setWeekendSandwich(!weekendSandwich)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                        weekendSandwich
+                          ? 'bg-indigo-600 focus:ring-indigo-500'
+                          : 'bg-slate-300 focus:ring-slate-400'
+                      }`}
+                    >
+                      <span className="sr-only">Toggle Weekend Sandwich Rule</span>
+                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform duration-200 ${
+                        weekendSandwich ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
                 </div>
               </div>
               <Button 

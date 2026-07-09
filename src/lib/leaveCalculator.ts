@@ -24,8 +24,8 @@ export function calculateRequestedDays(
   let currentDate = new Date(start)
 
   const isWeekend = (d: Date) => d.getUTCDay() === 0 || d.getUTCDay() === 6
-  // Rule: Weekend/national holiday sandwich rule disabled for all leaves to count working days properly.
-  const applySandwich = false
+  // Rule: CL and PL have sandwich if enabled.
+  const applySandwich = (leaveType === "CL" || leaveType === "PL") && isSandwichEnabled
 
   while (currentDate <= end) {
     const ds = currentDate.toISOString().split('T')[0]
