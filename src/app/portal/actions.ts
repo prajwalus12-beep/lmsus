@@ -37,6 +37,9 @@ export async function submitLeaveRequest(data: {
   const supabase = await getSupabaseServer()
   const startObj = parseAsUTCDate(startDate)
   const endObj = parseAsUTCDate(endDate)
+  if (startObj > endObj) {
+    throw new Error("Start date cannot be after end date.")
+  }
   const leaveYear = startObj.getUTCFullYear()
 
   const yearStart = `${leaveYear}-01-01`

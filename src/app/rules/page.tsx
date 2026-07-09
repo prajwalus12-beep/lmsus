@@ -95,11 +95,15 @@ export default async function LeaveRulesPage() {
                   <span>1.0 Day per application</span>
                 </div>
                 <div className="flex justify-between border-b pb-1">
+                  <span className="font-medium text-slate-800">Half Days:</span>
+                  <span>Allowed (0.5 Days)</span>
+                </div>
+                <div className="flex justify-between border-b pb-1">
                   <span className="font-medium text-slate-800">Conversion Rule:</span>
                   <span className="text-indigo-600 font-medium">&gt; 2 Days converts to PL</span>
                 </div>
                 <p className="text-xs text-slate-500 pt-1">
-                  CL duration is restricted to a maximum of 1.0 day. Applying for more than 2 calendar days automatically converts the type to PL.
+                  CL duration is restricted to a maximum of 1.0 day. Half days (0.5 days) are allowed. Applying for more than 2 calendar days automatically converts the type to PL.
                 </p>
               </CardContent>
             </Card>

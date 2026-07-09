@@ -40,6 +40,11 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         setProjectedBalanceMap(null);
         return;
       }
+      if (new Date(startDate) > new Date(endDate)) {
+        setProjectedDays(0);
+        setProjectedBalanceMap(null);
+        return;
+      }
       setIsProjecting(true);
       try {
         const res = await fetch("/api/leave/project", {
@@ -92,6 +97,12 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    if (start > end) {
+      toast.error("Start date cannot be after end date.")
+      return
+    }
     if (exceedsNegativeLimit) {
       toast.error(`Cannot apply: net balance would be ${netBalance}, below the minimum allowed limit of ${MAX_NEGATIVE} days.`)
       return

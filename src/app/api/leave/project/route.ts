@@ -14,6 +14,9 @@ export async function POST(request: Request) {
     const supabase = await getSupabaseServer()
     const start = new Date(startDate)
     const end = new Date(endDate)
+    if (start > end) {
+      return NextResponse.json({ error: "Start date cannot be after end date." }, { status: 400 })
+    }
 
     const yearStart = `${start.getFullYear()}-01-01`
     const yearEnd = `${start.getFullYear()}-12-31`
