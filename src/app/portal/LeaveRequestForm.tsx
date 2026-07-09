@@ -103,6 +103,40 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
       toast.error("Start date cannot be after end date.")
       return
     }
+    if (type === "SL" && projectedDays >= 2.0) {
+      if (!documentUrl || documentUrl.trim() === "") {
+        toast.error("Medical certificate/document URL is mandatory for Sick Leave requests of 2 or more days.")
+        return
+      }
+      try {
+        const parsedUrl = new URL(documentUrl)
+        if (parsedUrl.protocol !== "https:") {
+          toast.error("Document URL must use secure https:// protocol.")
+          return
+        }
+        const hostname = parsedUrl.hostname.toLowerCase()
+        const isWhitelisted = 
+          hostname === "drive.google.com" ||
+          hostname === "dropbox.com" ||
+          hostname.endsWith(".dropbox.com") ||
+          hostname === "sharepoint.com" ||
+          hostname.endsWith(".sharepoint.com") ||
+          hostname === "company.com" ||
+          hostname.endsWith(".company.com");
+        
+        if (!isWhitelisted) {
+          toast.error("Document URL must be from drive.google.com, dropbox.com, sharepoint.com, or company.com.")
+          return
+        }
+        if (hostname.includes("google.com") && (parsedUrl.pathname.toLowerCase().startsWith("/search") || parsedUrl.pathname === "/")) {
+          toast.error("Google search results are not valid document URLs.")
+          return
+        }
+      } catch (e) {
+        toast.error("Please enter a valid document URL.")
+        return
+      }
+    }
     if (exceedsNegativeLimit) {
       toast.error(`Cannot apply: net balance would be ${netBalance}, below the minimum allowed limit of ${MAX_NEGATIVE} days.`)
       return
@@ -212,13 +246,13 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         <p className="text-xs text-slate-500">Provide a link to supporting documents if required (Rule 46).</p>
       </div>
 
-      {type === 'SL' && projectedDays > 2 && (
+      {type === 'SL' && projectedDays >= 2 && (
         <div className="space-y-2 p-4 bg-amber-50 rounded-lg border border-amber-200">
           <p className="text-sm text-amber-800 flex items-center gap-2 font-semibold">
             <AlertCircle className="w-4 h-4" />
             Medical Certificate Required
           </p>
-          <p className="text-xs text-amber-700">Sick leaves exceeding 2 days require a medical certificate. Please paste the link above.</p>
+          <p className="text-xs text-amber-700">Sick leaves of 2 or more days require a medical certificate. Please paste the link above.</p>
         </div>
       )}
 

@@ -92,7 +92,7 @@ export default async function LeaveRulesPage() {
               <CardContent className="text-sm text-slate-600 space-y-2">
                 <div className="flex justify-between border-b pb-1">
                   <span className="font-medium text-slate-800">Max Request:</span>
-                  <span>1.0 Day per application</span>
+                  <span>2.0 Days per application</span>
                 </div>
                 <div className="flex justify-between border-b pb-1">
                   <span className="font-medium text-slate-800">Half Days:</span>
@@ -103,7 +103,7 @@ export default async function LeaveRulesPage() {
                   <span className="text-indigo-600 font-medium">&gt; 2 Days converts to PL</span>
                 </div>
                 <p className="text-xs text-slate-500 pt-1">
-                  CL duration is restricted to a maximum of 1.0 day. Half days (0.5 days) are allowed. Applying for more than 2 calendar days automatically converts the type to PL.
+                  CL requests are limited to a maximum of 2.0 days at a time. Half days (0.5 days) are allowed. Applying for more than 2 calendar days automatically converts the type to PL.
                 </p>
               </CardContent>
             </Card>
@@ -128,7 +128,7 @@ export default async function LeaveRulesPage() {
                   <span>Allowed (0.5 Days)</span>
                 </div>
                 <p className="text-xs text-slate-500 pt-1">
-                  SL requests are capped at 2.0 days. For longer medical absences, contact HR with medical certification.
+                  SL is limited to a maximum of 2.0 days at a time. Requests for more than 2 days will not be submitted. If you want SL for more than 2 days, apply as a PL instead and provide a valid document link. Supported secure storage links: Google Drive, Dropbox, Sharepoint, or internal company.com domains.
                 </p>
               </CardContent>
             </Card>

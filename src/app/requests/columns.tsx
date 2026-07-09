@@ -28,6 +28,7 @@ export type LeaveRequestRow = {
   reason: string
   status: string
   attachmentUrl?: string | null
+  calendarDays?: number
 }
 
 export const columns: ColumnDef<LeaveRequestRow>[] = [
@@ -73,20 +74,39 @@ export const columns: ColumnDef<LeaveRequestRow>[] = [
     header: "Docs",
     cell: ({ row }) => {
       const url = row.getValue("attachmentUrl") as string
-      if (!url) return <span className="text-slate-300">—</span>
-      return (
-        <a 
-          href={url} 
-          target="_blank" 
-          rel="noopener noreferrer" 
-          className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-medium text-xs"
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-          View
-        </a>
-      )
+      const req = row.original
+      const isSickLeave = req.type === "SL"
+      const requiresDoc = isSickLeave && (req.calendarDays ?? 0) >= 2
+      const hasDoc = !!url && url.trim() !== ""
+
+      if (hasDoc) {
+        return (
+          <a 
+            href={url} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-medium text-xs"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            View
+          </a>
+        )
+      }
+
+      if (requiresDoc && !hasDoc) {
+        return (
+          <span className="text-red-600 font-semibold text-xs flex items-center gap-1 animate-pulse" title="Missing Document Error">
+            <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            Missing Document Error
+          </span>
+        )
+      }
+
+      return <span className="text-slate-300">—</span>
     }
   },
   {

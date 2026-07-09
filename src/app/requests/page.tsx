@@ -23,18 +23,25 @@ export default async function RequestsPage() {
     compOffsCount: compOffs?.length
   });
 
-  const formattedRequests = (requests || []).map((req: any) => ({
-    id: req.id,
-    employeeName: req.profiles?.name || 'Unknown',
-    employeeStatus: req.profiles?.status || 'ACTIVE',
-    department: req.profiles?.departments?.name || 'N/A',
-    type: req.type,
-    startDate: new Date(req.start_date).toLocaleDateString(),
-    endDate: new Date(req.end_date).toLocaleDateString(),
-    reason: req.reason,
-    status: req.status,
-    attachmentUrl: req.attachment_url
-  }));
+  const formattedRequests = (requests || []).map((req: any) => {
+    const start = new Date(req.start_date)
+    const end = new Date(req.end_date)
+    const calendarDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+
+    return {
+      id: req.id,
+      employeeName: req.profiles?.name || 'Unknown',
+      employeeStatus: req.profiles?.status || 'ACTIVE',
+      department: req.profiles?.departments?.name || 'N/A',
+      type: req.type,
+      startDate: new Date(req.start_date).toLocaleDateString(),
+      endDate: new Date(req.end_date).toLocaleDateString(),
+      reason: req.reason,
+      status: req.status,
+      attachmentUrl: req.attachment_url,
+      calendarDays
+    }
+  });
 
   const formattedCompOffs = (compOffs || []).map((co: any) => ({
     id: co.id,

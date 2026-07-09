@@ -114,7 +114,7 @@ model LeaveRequest {
   status         String   @default("PENDING") // PENDING, L1_APPROVED, HR_APPROVED, REJECTED, CANCELLED
   isNegative     Boolean  @default(false)    // Rule 44: negative balance leave
   negativeAmount Float    @default(0)        // How many days went negative
-  attachmentUrl  String?
+  attachmentUrl  String?  @db.VarChar(1024)
   year           Int      @default(2026)
   approvedById   String?
   approvedBy     User?    @relation("ApprovedRequests", fields: [approvedById], references: [id])

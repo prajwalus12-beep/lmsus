@@ -7,6 +7,35 @@ import { calculateRequestedDays } from "@/lib/leaveCalculator"
 import { sendEmail } from "@/lib/email"
 import { getSystemDate } from "@/lib/systemDate"
 
+function validateAttachmentUrl(url: string): boolean {
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol !== "https:") return false;
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+    const pathname = parsedUrl.pathname.toLowerCase();
+
+    const isWhitelisted = 
+      hostname === "drive.google.com" ||
+      hostname === "dropbox.com" ||
+      hostname.endsWith(".dropbox.com") ||
+      hostname === "sharepoint.com" ||
+      hostname.endsWith(".sharepoint.com") ||
+      hostname === "company.com" ||
+      hostname.endsWith(".company.com");
+
+    if (!isWhitelisted) return false;
+
+    if (hostname.includes("google.com") && (pathname.startsWith("/search") || pathname === "/")) {
+      return false;
+    }
+    
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function submitLeaveRequest(data: {
   userId: string
   type: string
@@ -104,6 +133,16 @@ export async function submitLeaveRequest(data: {
   }
   if (type === "SL" && days > 2.0) {
     throw new Error("Sick Leave (SL) requests are limited to a maximum of 2 days.")
+  }
+
+  // 2-Day Sick Leave Document Verification Rule
+  if (type === "SL" && days >= 2.0) {
+    if (!attachmentUrl || attachmentUrl.trim() === "") {
+      throw new Error("Cannot apply: A valid medical certificate/document URL is mandatory for Sick Leave of 2 or more days.")
+    }
+    if (!validateAttachmentUrl(attachmentUrl)) {
+      throw new Error("Cannot apply: The document URL must be a secure link from an authorized provider (Google Drive, Dropbox, Sharepoint, or internal domain).")
+    }
   }
 
   // 3. Adjacency Blocks (Friday-Monday and Holidays)
