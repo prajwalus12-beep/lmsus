@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useSignOut } from "@/components/providers/AuthProvider"
+import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,6 +23,7 @@ import { submitLeaveRequest } from "../portal/actions"
 
 export function SettingsClient({ closures, adjustments, negativeLeaves, testMode, users, showClBalanceToEmployee, emailEnabled: initialEmailEnabled, initialConfigs }: any) {
   const signOut = useSignOut()
+  const router = useRouter()
   const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0])
   const [isTestMode, setIsTestMode] = useState(testMode?.isTestMode ?? false)
   const [adjUserId, setAdjUserId] = useState("")
@@ -62,6 +64,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   const [applyReason, setApplyReason] = useState("")
   const [applyAttachmentUrl, setApplyAttachmentUrl] = useState("")
   const [applyLoading, setApplyLoading] = useState(false)
+  const [adjPage, setAdjPage] = useState(1)
 
   const handleCloseYear = async () => {
     if (!confirm("Are you sure you want to close the year 2026? This will reset CL/SL and carry forward PL. This action is irreversible.")) return
@@ -75,6 +78,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
       const data = await res.json()
       if (data.success) {
         toast.success("Leave Year 2026 has been closed. Carry-forward balances generated for 2027.")
+        router.refresh()
       } else {
         toast.error(data.error || "Failed to close year")
       }
@@ -111,6 +115,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
       if (data.success) {
         toast.success(`Adjustment recorded for selected employee.`)
         setAdjAmount(""); setAdjReason("")
+        router.refresh()
       } else {
         toast.error(data.error || "Failed to record adjustment")
       }
@@ -471,7 +476,10 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                   <Select value={applyUserId} onValueChange={(v) => v && setApplyUserId(v)}>
                     <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
                     <SelectContent>
-                      {users.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                      {users.map((u: any) => {
+                        const deptName = u.departments?.name || (Array.isArray(u.departments) ? u.departments[0]?.name : null) || 'N/A'
+                        return <SelectItem key={u.id} value={u.id}>{u.name} ({deptName})</SelectItem>
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -580,7 +588,10 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                   <Select value={adjUserId} onValueChange={(v) => v && setAdjUserId(v)}>
                     <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
                     <SelectContent>
-                      {users.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                      {users.map((u: any) => {
+                        const deptName = u.departments?.name || (Array.isArray(u.departments) ? u.departments[0]?.name : null) || 'N/A'
+                        return <SelectItem key={u.id} value={u.id}>{u.name} ({deptName})</SelectItem>
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -633,30 +644,70 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                     <Calculator className="w-8 h-8 mx-auto mb-2 opacity-40" />
                     <p className="text-sm">No adjustments recorded yet</p>
                   </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Reason</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {adjustments.map((a: any) => (
-                        <TableRow key={a.id}>
-                          <TableCell>{a.enteredByName}</TableCell>
-                          <TableCell><Badge variant="outline">{a.leaveType}</Badge></TableCell>
-                          <TableCell className={a.amount < 0 ? "text-red-600 font-bold" : "text-green-600 font-bold"}>
-                            {a.amount > 0 ? "+" : ""}{a.amount}
-                          </TableCell>
-                          <TableCell className="text-sm text-slate-500 truncate max-w-[120px]">{a.reason}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                ) : (() => {
+                  const itemsPerPage = 10
+                  const totalPages = Math.ceil(adjustments.length / itemsPerPage)
+                  // Safe guard active page if adjustments list changes
+                  const activePage = Math.min(adjPage, Math.max(1, totalPages))
+                  const startIndex = (activePage - 1) * itemsPerPage
+                  const paginatedAdjustments = adjustments.slice(startIndex, startIndex + itemsPerPage)
+
+                  return (
+                    <div className="space-y-4">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Employee</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Reason</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paginatedAdjustments.map((a: any) => (
+                            <TableRow key={a.id}>
+                              <TableCell>
+                                <div className="font-medium text-slate-800 text-sm">{a.userName}</div>
+                                <div className="text-[10px] text-slate-500">By {a.enteredByName}</div>
+                              </TableCell>
+                              <TableCell><Badge variant="outline">{a.leaveType}</Badge></TableCell>
+                              <TableCell className={a.amount < 0 ? "text-red-600 font-bold" : "text-green-600 font-bold"}>
+                                {a.amount > 0 ? "+" : ""}{a.amount}
+                              </TableCell>
+                              <TableCell className="text-sm text-slate-500 truncate max-w-[120px]">{a.reason}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between border-t pt-4 text-sm text-slate-500">
+                          <span>
+                            Page <strong>{activePage}</strong> of <strong>{totalPages}</strong> ({adjustments.length} total entries)
+                          </span>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setAdjPage(p => Math.max(1, p - 1))}
+                              disabled={activePage === 1}
+                            >
+                              Previous
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setAdjPage(p => Math.min(totalPages, p + 1))}
+                              disabled={activePage === totalPages}
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           </div>

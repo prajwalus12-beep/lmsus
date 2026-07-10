@@ -482,8 +482,8 @@ export async function submitLeaveRequest(data: {
     metadata: JSON.stringify({ type, startDate, endDate, days, isNegative, attachmentUrl })
   })
 
-  // Fetch HR and Managers for notification
-  const { data: adminsAndManagers } = await supabase
+  // Fetch HR and Managers for notification (using supabaseAdmin to bypass RLS)
+  const { data: adminsAndManagers } = await supabaseAdmin
     .from('profiles')
     .select('email, communication_email')
     .in('role', ['ADMIN', 'MANAGER'])
@@ -550,57 +550,70 @@ export async function submitLeaveRequest(data: {
 
   // 2. Notify HR & Managers
   if (adminEmails.length > 0) {
+    const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
     await Promise.all(adminEmails.map((email: string) => 
       sendEmail({
         to: email,
-        subject: `New Leave Application: ${user?.name} (${type})`,
-          html: `
-<div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-    <div style="background-color: #0f172a; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL</div>
+        subject: `[Action Required] New Leave Request: ${user?.name} (${type})`,
+        html: `
+<div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08); border: 1px solid #e2e8f0;">
+    <div style="background-color: #4f46e5; color: #ffffff; padding: 24px; text-align: center;">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; opacity: 0.9; display: block; margin-bottom: 4px;">LMS Admin Portal</span>
+      <h1 style="font-size: 20px; font-weight: 600; margin: 0; letter-spacing: 0.5px;">Pending Leave Approval</h1>
+    </div>
     <div style="padding: 32px;">
-      <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; margin-bottom: 16px;">Dear Manager/HR,</h2>
-      <p style="font-size: 15px; color: #334155; line-height: 1.6; margin-bottom: 24px;">
-        <strong>${user?.name}</strong> has submitted a new leave application that requires your <span style="background-color: #e2e8f0; color: #475569; padding: 4px 8px; border-radius: 4px; font-weight: 600;">review</span>.
+      <h2 style="color: #0f172a; margin-top: 0; font-size: 20px; font-weight: 600; margin-bottom: 8px;">Hello Administrator,</h2>
+      <p style="font-size: 15px; color: #475569; line-height: 1.6; margin-bottom: 24px;">
+        A new leave application has been submitted and is waiting for your decision. Please review the details below:
       </p>
-      <div style="font-size: 13px; font-weight: bold; color: #64748b; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase;">LEAVE DETAILS</div>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 24px; border-collapse: separate; overflow: hidden;">
+      
+      <div style="background-color: #f1f5f9; border-left: 4px solid #4f46e5; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+        <span style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 8px;">Action Required</span>
+        <span style="font-size: 15px; color: #1e293b; font-weight: 600; display: block;">${user?.name} &mdash; ${type} Request</span>
+      </div>
+
+      <div style="font-size: 12px; font-weight: 700; color: #64748b; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase;">REQUEST DETAILS</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 28px; border-collapse: separate; overflow: hidden; font-size: 14px;">
         <tr>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px; width: 35%;">Employee</td>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;">${user?.name}</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; width: 35%;">Employee</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${user?.name}</td>
         </tr>
         <tr>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;">Leave Type</td>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;">${type}</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Leave Type</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${type}</td>
         </tr>
         <tr>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;">Duration</td>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;">${formattedStartDate} <span style="color: #94a3b8; font-weight: normal; margin: 0 4px;">to</span> ${formattedEndDate}</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Duration</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${formattedStartDate} <span style="color: #94a3b8; font-weight: normal; margin: 0 4px;">to</span> ${formattedEndDate}</td>
         </tr>
         <tr>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;">Total Days</td>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;">${days}</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Total Days</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${days}</td>
         </tr>
         <tr>
-          <td style="padding: 16px; color: #64748b; font-size: 14px;">Reason</td>
-          <td style="padding: 16px; color: #0f172a; font-size: 14px; font-weight: 600;">${reason}</td>
+          <td style="padding: 14px 16px; color: #64748b;">Reason</td>
+          <td style="padding: 14px 16px; color: #0f172a; font-weight: 600;">${reason}</td>
         </tr>
       </table>
-      <p style="font-size: 15px; color: #475569; line-height: 1.6; margin-bottom: 32px;">
-        Please log in to the Leave Management System (LMS) to approve or reject this request.
-      </p>
-      <div style="border-top: 1px solid #f1f5f9; padding-top: 24px; font-size: 14px;">
-        <div style="color: #94a3b8; margin-bottom: 4px;">Best Regards,</div>
-        <div style="color: #0f172a; font-weight: bold; margin-bottom: 4px;">Leave Management System</div>
-        <div style="color: #64748b;">Unique School India LLP</div>
+
+      <div style="text-align: center; margin-bottom: 32px;">
+        <a href="${appUrl}/requests" style="background-color: #4f46e5; color: #ffffff; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 15px; text-decoration: none; display: inline-block; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2), 0 2px 4px -1px rgba(79, 70, 229, 0.1);">
+          Review & Respond
+        </a>
+      </div>
+
+      <div style="border-top: 1px solid #f1f5f9; padding-top: 24px; font-size: 14px; text-align: center;">
+        <div style="color: #94a3b8; margin-bottom: 4px;">Leave Management System</div>
+        <div style="color: #cbd5e1; font-size: 12px;">Unique School India LLP</div>
       </div>
     </div>
   </div>
   <div style="text-align: center; font-size: 12px; color: #94a3b8; margin-top: 24px;">
-    This is an automated notification. Please do not reply to this email.
+    This is an automated administrative notification. Please do not reply directly to this message.
   </div>
 </div>
-          `
+        `
       })
     ))
   }
@@ -721,50 +734,63 @@ export async function submitCompOffWork(data: {
 
   // 2. Notify HR & Managers
   if (adminEmails.length > 0) {
+    const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
     await Promise.all(adminEmails.map((email: string) => 
       sendEmail({
         to: email,
-        subject: `New Comp-Off Logged: ${user?.name}`,
+        subject: `[Action Required] New Comp-Off Request: ${user?.name}`,
         html: `
-<div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-    <div style="background-color: #0f172a; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL</div>
+<div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08); border: 1px solid #e2e8f0;">
+    <div style="background-color: #4f46e5; color: #ffffff; padding: 24px; text-align: center;">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; opacity: 0.9; display: block; margin-bottom: 4px;">LMS Admin Portal</span>
+      <h1 style="font-size: 20px; font-weight: 600; margin: 0; letter-spacing: 0.5px;">Pending Comp-Off Approval</h1>
+    </div>
     <div style="padding: 32px;">
-      <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; margin-bottom: 16px;">Dear Manager/HR,</h2>
-      <p style="font-size: 15px; color: #334155; line-height: 1.6; margin-bottom: 24px;">
-        <strong>${user?.name}</strong> has logged new comp-off hours that require your <span style="background-color: #e2e8f0; color: #475569; padding: 4px 8px; border-radius: 4px; font-weight: 600;">review</span>.
+      <h2 style="color: #0f172a; margin-top: 0; font-size: 20px; font-weight: 600; margin-bottom: 8px;">Hello Administrator,</h2>
+      <p style="font-size: 15px; color: #475569; line-height: 1.6; margin-bottom: 24px;">
+        A new comp-off hours claim has been logged and is waiting for your decision. Please review the details below:
       </p>
-      <div style="font-size: 13px; font-weight: bold; color: #64748b; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase;">COMP-OFF DETAILS</div>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 24px; border-collapse: separate; overflow: hidden;">
+      
+      <div style="background-color: #f1f5f9; border-left: 4px solid #4f46e5; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+        <span style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 8px;">Action Required</span>
+        <span style="font-size: 15px; color: #1e293b; font-weight: 600; display: block;">${user?.name} &mdash; Comp-Off Logging Request</span>
+      </div>
+
+      <div style="font-size: 12px; font-weight: 700; color: #64748b; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase;">COMP-OFF DETAILS</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 28px; border-collapse: separate; overflow: hidden; font-size: 14px;">
         <tr>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px; width: 35%;">Employee</td>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;">${user?.name}</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; width: 35%;">Employee</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${user?.name}</td>
         </tr>
         <tr>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;">Date Worked</td>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;">${formattedDate}</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Date Worked</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${formattedDate}</td>
         </tr>
         <tr>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;">Hours Logged</td>
-          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;">${hoursWorked} hrs</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Hours Logged</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${hoursWorked} hrs</td>
         </tr>
         <tr>
-          <td style="padding: 16px; color: #64748b; font-size: 14px;">Reason/Task</td>
-          <td style="padding: 16px; color: #0f172a; font-size: 14px; font-weight: 600;">${reason}</td>
+          <td style="padding: 14px 16px; color: #64748b;">Reason/Task</td>
+          <td style="padding: 14px 16px; color: #0f172a; font-weight: 600;">${reason}</td>
         </tr>
       </table>
-      <p style="font-size: 15px; color: #475569; line-height: 1.6; margin-bottom: 32px;">
-        Please log in to the Leave Management System (LMS) to approve or reject this comp-off entry.
-      </p>
-      <div style="border-top: 1px solid #f1f5f9; padding-top: 24px; font-size: 14px;">
-        <div style="color: #94a3b8; margin-bottom: 4px;">Best Regards,</div>
-        <div style="color: #0f172a; font-weight: bold; margin-bottom: 4px;">Leave Management System</div>
-        <div style="color: #64748b;">Unique School India LLP</div>
+
+      <div style="text-align: center; margin-bottom: 32px;">
+        <a href="${appUrl}/requests" style="background-color: #4f46e5; color: #ffffff; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 15px; text-decoration: none; display: inline-block; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2), 0 2px 4px -1px rgba(79, 70, 229, 0.1);">
+          Review & Respond
+        </a>
+      </div>
+
+      <div style="border-top: 1px solid #f1f5f9; padding-top: 24px; font-size: 14px; text-align: center;">
+        <div style="color: #94a3b8; margin-bottom: 4px;">Leave Management System</div>
+        <div style="color: #cbd5e1; font-size: 12px;">Unique School India LLP</div>
       </div>
     </div>
   </div>
   <div style="text-align: center; font-size: 12px; color: #94a3b8; margin-top: 24px;">
-    This is an automated notification. Please do not reply to this email.
+    This is an automated administrative notification. Please do not reply directly to this message.
   </div>
 </div>
         `

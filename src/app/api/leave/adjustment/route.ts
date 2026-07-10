@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -13,16 +14,15 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { userId, leaveType, amount, adjustmentType, reason, effectiveYear } = body
+  console.log("ADJUSTMENT POST ATTEMPT DETAILS:", { userId, leaveType, amount, adjustmentType, reason, effectiveYear, sessionUserId: sessionUser.id })
 
   if (!userId || !leaveType || amount === undefined || !adjustmentType || !reason || !effectiveYear) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const supabase = await getSupabaseServer()
-
   try {
     // 1. Create the adjustment record
-    const { data: adjustment, error: adjError } = await supabase
+    const { data: adjustment, error: adjError } = await supabaseAdmin
       .from('leave_balance_adjustments')
       .insert({
         user_id: userId,
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     if (adjError || !adjustment) throw new Error(adjError?.message || "Failed to create adjustment")
 
     // 2. Fetch live balance
-    const { data: balance, error: balError } = await supabase
+    const { data: balance, error: balError } = await supabaseAdmin
       .from('leave_balances')
       .select('*')
       .eq('user_id', userId)
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const currentVal = balance[typeKey] || 0
 
     // 3. Update live balance
-    const { error: updateBalError } = await supabase
+    const { error: updateBalError } = await supabaseAdmin
       .from('leave_balances')
       .update({
         [typeKey]: currentVal + parseFloat(amount),
@@ -63,19 +63,23 @@ export async function POST(req: NextRequest) {
     if (updateBalError) throw new Error(updateBalError.message)
 
     // 4. Create Audit Log
-    const { error: logError } = await supabase
-      .from('audit_logs')
-      .insert({
-        user_id: sessionUser.id,
-        action: 'ADJUSTMENT_MADE',
-        entity: 'LeaveBalanceAdjustment',
-        entity_id: adjustment.id,
-        new_value: String(currentVal + parseFloat(amount)),
-        old_value: String(currentVal),
-        metadata: JSON.stringify({ targetUserId: userId, leaveType, amount, reason })
-      })
+    try {
+      const { error: logError } = await supabaseAdmin
+        .from('audit_logs')
+        .insert({
+          user_id: sessionUser.id,
+          action: 'ADJUSTMENT_MADE',
+          entity: 'LeaveBalanceAdjustment',
+          entity_id: adjustment.id,
+          new_value: String(currentVal + parseFloat(amount)),
+          old_value: String(currentVal),
+          metadata: JSON.stringify({ targetUserId: userId, leaveType, amount, reason })
+        })
 
-    if (logError) console.error("Error creating adjustment audit log:", logError)
+      if (logError) console.error("Error creating adjustment audit log:", logError)
+    } catch (logError) {
+      console.error("Error creating adjustment audit log:", logError)
+    }
 
     // Keep ledger in sync
     await syncUserLedger(userId, parseInt(effectiveYear))

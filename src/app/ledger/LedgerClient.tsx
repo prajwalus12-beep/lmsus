@@ -320,15 +320,21 @@ export function LedgerClient({
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-slate-500" />
               <Select value={selectedUser.id} onValueChange={(v) => v && handleUserChange(v)}>
-                <SelectTrigger className="w-56 bg-white">
+                <SelectTrigger className="w-72 bg-white">
                   <SelectValue>
-                    {allUsers.find(u => u.id === selectedUser.id)?.name || selectedUser.name}
+                    {(() => {
+                      const found = allUsers.find(u => u.id === selectedUser.id)
+                      if (found) {
+                        return `${found.name} (${found.department?.name || 'N/A'})`
+                      }
+                      return selectedUser.name
+                    })()}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {allUsers.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
-                      {u.name}
+                      {u.name} ({u.department?.name || 'N/A'})
                     </SelectItem>
                   ))}
                 </SelectContent>

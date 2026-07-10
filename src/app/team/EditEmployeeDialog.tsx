@@ -41,6 +41,19 @@ export function EditEmployeeDialog({ user, open, onOpenChange }: { user: any, op
   if (!user) return null
 
   const handleSave = async () => {
+    if (lwd && user.joinDate) {
+      const lwdDate = new Date(lwd)
+      const joinDate = new Date(user.joinDate)
+      
+      const lwdUtc = Date.UTC(lwdDate.getFullYear(), lwdDate.getMonth(), lwdDate.getDate())
+      const joinUtc = Date.UTC(joinDate.getFullYear(), joinDate.getMonth(), joinDate.getDate())
+
+      if (lwdUtc < joinUtc) {
+        toast.error("Last Working Day (LWD) cannot be before the Joined Date.")
+        return
+      }
+    }
+
     setLoading(true)
     try {
       const res = await updateEmployee(user.id, {

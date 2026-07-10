@@ -8,6 +8,9 @@ import { toast } from "sonner"
 import { useState } from "react"
 import { EditEmployeeDialog } from "./EditEmployeeDialog"
 import { EmployeeStatusBadge } from "@/components/EmployeeStatusBadge"
+import { deleteEmployee } from "./actions"
+import { useRouter } from "next/navigation"
+import { ProrateLeavesDialog } from "./ProrateLeavesDialog"
 
 export type TeamRow = {
   id: string
@@ -26,6 +29,8 @@ export type TeamRow = {
 const ActionCell = ({ row }: { row: any }) => {
   const user = row.original
   const [editOpen, setEditOpen] = useState(false)
+  const [prorateOpen, setProrateOpen] = useState(false)
+  const router = useRouter()
 
   return (
     <div className="flex items-center gap-1">
@@ -42,7 +47,7 @@ const ActionCell = ({ row }: { row: any }) => {
         variant="ghost" 
         size="icon" 
         className="h-8 w-8 text-slate-400 hover:text-amber-600"
-        onClick={() => toast.info("Opening proration calculator for " + user.name)}
+        onClick={() => setProrateOpen(true)}
         title="Prorate Leaves"
       >
         <Calculator className="h-4 w-4" />
@@ -51,9 +56,14 @@ const ActionCell = ({ row }: { row: any }) => {
         variant="ghost" 
         size="icon" 
         className="h-8 w-8 text-slate-400 hover:text-red-600"
-        onClick={() => {
+        onClick={async () => {
            if(confirm(`Are you sure you want to delete ${user.name}?`)) {
-             toast.error("Employee deleted")
+             const promise = deleteEmployee(user.id);
+             toast.promise(promise, {
+               loading: 'Deleting employee...',
+               success: () => 'Employee deleted successfully',
+               error: (err: any) => `Error: ${err.message || 'Failed to delete'}`
+             });
            }
         }}
         title="Delete Employee"
@@ -66,8 +76,26 @@ const ActionCell = ({ row }: { row: any }) => {
         open={editOpen} 
         onOpenChange={setEditOpen} 
       />
+
+      <ProrateLeavesDialog
+        user={user}
+        open={prorateOpen}
+        onOpenChange={setProrateOpen}
+        onRefresh={() => router.refresh()}
+      />
     </div>
   )
+}
+
+const formatDate = (dateStr: string | null | undefined) => {
+  if (!dateStr) return "—"
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return "—"
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).replace(/ /g, "-")
 }
 
 export const columns: ColumnDef<TeamRow>[] = [
@@ -146,20 +174,17 @@ export const columns: ColumnDef<TeamRow>[] = [
   {
     accessorKey: "joinDate",
     header: () => <span className="text-xs font-bold">Joined</span>,
-    cell: ({ row }) => <span className="text-xs">{(row.original as any).displayJoinDate}</span>
+    cell: ({ row }) => <span className="text-xs">{formatDate(row.original.joinDate)}</span>
   },
   {
     accessorKey: "probationEndDate",
     header: () => <span className="text-xs font-bold">Probation End</span>,
-    cell: ({ row }) => {
-      const date = row.getValue("probationEndDate") as string
-      return <span className="text-xs text-amber-600">{date ? new Date(date).toLocaleDateString() : "—"}</span>
-    }
+    cell: ({ row }) => <span className="text-xs text-amber-600 font-medium">{formatDate(row.original.probationEndDate)}</span>
   },
   {
     accessorKey: "lastWorkingDay",
     header: () => <span className="text-xs font-bold">LWD</span>,
-    cell: ({ row }) => <span className="text-xs text-red-500 font-medium">{(row.original as any).displayLwd}</span>
+    cell: ({ row }) => <span className="text-xs text-red-500 font-medium">{formatDate(row.original.lastWorkingDay)}</span>
   },
   {
     id: "actions",

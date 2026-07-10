@@ -18,10 +18,10 @@ export default async function SettingsPage() {
     { data: configs }
   ] = await Promise.all([
     supabase.from('leave_year_closures').select('*').order('year', { ascending: false }),
-    supabase.from('leave_balance_adjustments').select('*').order('created_at', { ascending: false }).limit(20),
+    supabaseAdmin.from('leave_balance_adjustments').select('*, profiles!user_id(name)').order('created_at', { ascending: false }).limit(1000),
     supabase.from('negative_leave_trackings').select('*, profiles(name)').order('created_at', { ascending: false }),
     supabase.from('system_date_overrides').select('*').order('created_at', { ascending: false }).limit(1),
-    supabaseAdmin.from('profiles').select('id, name').order('name', { ascending: true }),
+    supabaseAdmin.from('profiles').select('id, name, departments(name)').order('name', { ascending: true }),
     supabase.from('system_configs').select('*')
   ])
 
@@ -44,6 +44,7 @@ export default async function SettingsPage() {
       adjustments={(adjustments || []).map((a: any) => ({
         id: a.id,
         userId: a.user_id,
+        userName: a.profiles?.name || 'Unknown',
         leaveType: a.leave_type,
         amount: a.amount,
         adjustmentType: a.adjustment_type,
