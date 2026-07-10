@@ -17,6 +17,7 @@ import {
   PlusCircle, MinusCircle, History, ShieldAlert, Eye, EyeOff, BookOpen, RefreshCcw, Shield, Loader2,
   Mail, MailCheck, MailX, Send, Inbox
 } from "lucide-react"
+import { submitLeaveRequest } from "../portal/actions"
 
 
 export function SettingsClient({ closures, adjustments, negativeLeaves, testMode, users, showClBalanceToEmployee, emailEnabled: initialEmailEnabled, initialConfigs }: any) {
@@ -39,16 +40,28 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   const [accrualRate, setAccrualRate] = useState(initialConfigs?.['ACCRUAL_RATE_PL'] || "1.5")
   const [accrualBase, setAccrualBase] = useState(initialConfigs?.['ACCRUAL_BASE_DAYS'] || "20")
   const [maxCarryForward, setMaxCarryForward] = useState(initialConfigs?.['MAX_CARRY_FORWARD_PL'] || "30")
-  const [minWorkedDays, setMinWorkedDays] = useState(initialConfigs?.['MIN_WORKED_DAYS_FOR_PL'] || "15")
   const [probationMonths, setProbationMonths] = useState(initialConfigs?.['PROBATION_PERIOD_MONTHS'] || "6")
   const [maxNegative, setMaxNegative] = useState(initialConfigs?.['MAX_NEGATIVE_LEAVE'] || "-5")
   const [weekendSandwich, setWeekendSandwich] = useState<boolean>(initialConfigs?.['weekend_sandwich_rule'] === 'true')
+  const [minWorkingDaysThreshold, setMinWorkingDaysThreshold] = useState(initialConfigs?.['min_working_days_threshold'] || "5")
+  const [maternityStatutoryCapDays, setMaternityStatutoryCapDays] = useState(initialConfigs?.['maternity_statutory_cap_days'] || "182")
+  const [paternityCorporateCapDays, setPaternityCorporateCapDays] = useState(initialConfigs?.['paternity_corporate_cap_days'] || "14")
   const [savingGlobalConfigs, setSavingGlobalConfigs] = useState(false)
   const [resetting, setResetting] = useState(false)
 
   // Email settings
   const [emailEnabled, setEmailEnabled] = useState<boolean>(initialEmailEnabled ?? true)
   const [savingEmailSetting, setSavingEmailSetting] = useState(false)
+
+  // Admin Apply on Behalf of Employee states
+  const [applyUserId, setApplyUserId] = useState("")
+  const [applyType, setApplyType] = useState("PL")
+  const [applyStartDate, setApplyStartDate] = useState("")
+  const [applyEndDate, setApplyEndDate] = useState("")
+  const [applyHalfDay, setApplyHalfDay] = useState("NONE")
+  const [applyReason, setApplyReason] = useState("")
+  const [applyAttachmentUrl, setApplyAttachmentUrl] = useState("")
+  const [applyLoading, setApplyLoading] = useState(false)
 
   const handleCloseYear = async () => {
     if (!confirm("Are you sure you want to close the year 2026? This will reset CL/SL and carry forward PL. This action is irreversible.")) return
@@ -106,6 +119,44 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
     }
   }
 
+  const handleAdminApplyLeave = async () => {
+    if (!applyUserId || !applyType || !applyStartDate || !applyEndDate || !applyReason) {
+      toast.error("Please fill all required fields")
+      return
+    }
+
+    setApplyLoading(true)
+    try {
+      const res = await submitLeaveRequest({
+        userId: applyUserId,
+        type: applyType,
+        startDate: applyStartDate,
+        endDate: applyEndDate,
+        reason: applyReason,
+        isNegative: false,
+        negativeAmount: 0,
+        attachmentUrl: applyAttachmentUrl || undefined,
+        halfDay: applyHalfDay
+      })
+
+      if (res.success) {
+        toast.success(res.message || "Leave request submitted successfully on behalf of employee.")
+        setApplyUserId("")
+        setApplyStartDate("")
+        setApplyEndDate("")
+        setApplyReason("")
+        setApplyAttachmentUrl("")
+        setApplyHalfDay("NONE")
+      } else {
+        toast.error(res.error || "Failed to submit leave request")
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error during submission")
+    } finally {
+      setApplyLoading(false)
+    }
+  }
+
   const handleSaveGlobalConfigs = async () => {
     setSavingGlobalConfigs(true)
     try {
@@ -113,10 +164,12 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
         { key: 'ACCRUAL_RATE_PL', value: accrualRate },
         { key: 'ACCRUAL_BASE_DAYS', value: accrualBase },
         { key: 'MAX_CARRY_FORWARD_PL', value: maxCarryForward },
-        { key: 'MIN_WORKED_DAYS_FOR_PL', value: minWorkedDays },
         { key: 'PROBATION_PERIOD_MONTHS', value: probationMonths },
         { key: 'MAX_NEGATIVE_LEAVE', value: maxNegative },
         { key: 'weekend_sandwich_rule', value: String(weekendSandwich) },
+        { key: 'min_working_days_threshold', value: minWorkingDaysThreshold },
+        { key: 'maternity_statutory_cap_days', value: maternityStatutoryCapDays },
+        { key: 'paternity_corporate_cap_days', value: paternityCorporateCapDays },
       ]
 
       await Promise.all(configs.map(c => 
@@ -240,6 +293,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
             <TabsTrigger value="yearend"><Lock className="w-4 h-4 mr-1.5" />Year-End Closure</TabsTrigger>
             <TabsTrigger value="policy"><ShieldAlert className="w-4 h-4 mr-1.5" />Policy Config</TabsTrigger>
             <TabsTrigger value="adjustments"><Calculator className="w-4 h-4 mr-1.5" />Manual Adjustments</TabsTrigger>
+            <TabsTrigger value="adminapply"><PlusCircle className="w-4 h-4 mr-1.5" />Submit Leave on Behalf</TabsTrigger>
             <TabsTrigger value="maintenance"><Shield className="w-4 h-4 mr-1.5" />Maintenance</TabsTrigger>
             <TabsTrigger value="negative"><AlertTriangle className="w-4 h-4 mr-1.5" />Negative Leave</TabsTrigger>
             <TabsTrigger value="testmode"><FlaskConical className="w-4 h-4 mr-1.5" />Test / Simulation</TabsTrigger>
@@ -338,11 +392,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                   <Input type="number" value={maxCarryForward} onChange={e => setMaxCarryForward(e.target.value)} />
                   <p className="text-xs text-slate-500">Default: 30</p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Min Worked Days for Eligibility</Label>
-                  <Input type="number" value={minWorkedDays} onChange={e => setMinWorkedDays(e.target.value)} />
-                  <p className="text-xs text-slate-500">Must work at least these many days to get any PL. Default: 15</p>
-                </div>
+
                 <div className="space-y-2">
                   <Label>Probation Period (months)</Label>
                   <Input type="number" value={probationMonths} onChange={e => setProbationMonths(e.target.value)} />
@@ -352,6 +402,21 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                   <Label>Max Allowed Negative Balance</Label>
                   <Input type="number" value={maxNegative} onChange={e => setMaxNegative(e.target.value)} />
                   <p className="text-xs text-slate-500">Example: -5. Default: -5</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Accrual Active Service Threshold (days)</Label>
+                  <Input type="number" value={minWorkingDaysThreshold} onChange={e => setMinWorkingDaysThreshold(e.target.value)} />
+                  <p className="text-xs text-slate-500">Maternity/Paternity/PL/CL/SL count as active service. Default: 5</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Maternity Statutory Cap (days)</Label>
+                  <Input type="number" value={maternityStatutoryCapDays} onChange={e => setMaternityStatutoryCapDays(e.target.value)} />
+                  <p className="text-xs text-slate-500">Default: 182</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Paternity Corporate Cap (days)</Label>
+                  <Input type="number" value={paternityCorporateCapDays} onChange={e => setPaternityCorporateCapDays(e.target.value)} />
+                  <p className="text-xs text-slate-500">Default: 14</p>
                 </div>
                 <div className="space-y-2 flex flex-col justify-end">
                   <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50">
@@ -384,6 +449,85 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                 disabled={savingGlobalConfigs}
               >
                 {savingGlobalConfigs ? "Saving..." : "Save Policy Configuration"}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Submit Leave on Behalf Tab ── */}
+        <TabsContent value="adminapply" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Submit Leave Request on Behalf of Employee</CardTitle>
+              <CardDescription>
+                Submit date-bound leaves (e.g. MAT, PAT, LOP, or standard leaves) for any employee.
+                This logs a standard Leave Request that syncs with calendars and the accrual active service engine.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Employee *</Label>
+                  <Select value={applyUserId} onValueChange={(v) => v && setApplyUserId(v)}>
+                    <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
+                    <SelectContent>
+                      {users.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Leave Type *</Label>
+                  <Select value={applyType} onValueChange={(v) => v && setApplyType(v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PL">Privilege Leave (PL)</SelectItem>
+                      <SelectItem value="CL">Casual Leave (CL)</SelectItem>
+                      <SelectItem value="SL">Sick Leave (SL)</SelectItem>
+                      <SelectItem value="COMP">Compensatory Off (COMP)</SelectItem>
+                      <SelectItem value="MAT">Maternity Leave (MAT)</SelectItem>
+                      <SelectItem value="PAT">Paternity Leave (PAT)</SelectItem>
+                      <SelectItem value="LOP">Loss of Pay (LOP)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Start Date *</Label>
+                  <Input type="date" value={applyStartDate} onChange={e => setApplyStartDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>End Date *</Label>
+                  <Input type="date" value={applyEndDate} onChange={e => setApplyEndDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Half Day</Label>
+                  <Select value={applyHalfDay} onValueChange={(v) => setApplyHalfDay(v || "NONE")} disabled={applyType === "PL"}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select half day" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">None</SelectItem>
+                      <SelectItem value="FIRST_HALF">First Half</SelectItem>
+                      <SelectItem value="SECOND_HALF">Second Half</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Reason / Remarks *</Label>
+                <Textarea placeholder="Explain the reason for this leave request..." value={applyReason} onChange={e => setApplyReason(e.target.value)} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Document URL (Optional)</Label>
+                <Input placeholder="e.g. secure link to medical document or certificates" value={applyAttachmentUrl} onChange={e => setApplyAttachmentUrl(e.target.value)} />
+              </div>
+
+              <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={handleAdminApplyLeave} disabled={applyLoading}>
+                {applyLoading ? "Submitting..." : "Submit Leave Request"}
               </Button>
             </CardContent>
           </Card>
@@ -446,7 +590,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                     <Select value={adjType} onValueChange={(v) => v && setAdjType(v)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {["PL", "CL", "SL", "COMP"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        {["PL", "CL", "SL", "COMP", "MAT", "PAT", "LOP"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

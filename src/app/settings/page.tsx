@@ -1,6 +1,7 @@
 import { getServerSession, getSupabaseServer } from '@/lib/supabaseServer'
 import { redirect } from 'next/navigation'
 import { SettingsClient } from './SettingsClient'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 export default async function SettingsPage() {
   const session = await getServerSession()
@@ -20,7 +21,7 @@ export default async function SettingsPage() {
     supabase.from('leave_balance_adjustments').select('*').order('created_at', { ascending: false }).limit(20),
     supabase.from('negative_leave_trackings').select('*, profiles(name)').order('created_at', { ascending: false }),
     supabase.from('system_date_overrides').select('*').order('created_at', { ascending: false }).limit(1),
-    supabase.from('profiles').select('id, name').order('name', { ascending: true }),
+    supabaseAdmin.from('profiles').select('id, name').order('name', { ascending: true }),
     supabase.from('system_configs').select('*')
   ])
 

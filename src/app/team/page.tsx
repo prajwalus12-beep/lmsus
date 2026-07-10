@@ -51,7 +51,7 @@ export default async function TeamPage() {
       department: user.departments?.name || 'N/A',
       departmentId: user.department_id || '',
       plBalance: balance?.pl ?? 0,
-      clSlBalance: (balance?.cl || 0) + (balance?.sl || 0),
+      clSlBalance: balance?.cl ?? 0,
       joinDate: user.join_date, 
       lastWorkingDay: user.last_working_day, 
       probationEndDate: user.probation_end_date, 

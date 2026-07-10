@@ -42,7 +42,7 @@ export default async function PortalPage() {
 
   const plAllowed = (balances.opening_pl || 0) + (balances.pl_accrued || 0);
   const clAllowed = balances.opening_cl || 7;
-  const slAllowed = (balances.sl || 0) + (balances.sl_used || 0);
+  const slAllowed = 0; // SL shares the CL balance bucket
 
   const totalAllowed = plAllowed + clAllowed + slAllowed;
   const totalUsed = (balances.pl_used || 0) + (balances.cl_used || 0) + (balances.sl_used || 0);
@@ -70,7 +70,7 @@ export default async function PortalPage() {
              <CardDescription>Your current entitlement for {new Date().getFullYear()}</CardDescription>
            </CardHeader>
            <CardContent>
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
                   <p className="text-xs text-indigo-600 font-semibold mb-1 uppercase tracking-wider">Privilege (PL)</p>
                   <p className="text-3xl font-bold text-indigo-700">{balances.pl}</p>
@@ -78,10 +78,6 @@ export default async function PortalPage() {
                 <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
                   <p className="text-xs text-amber-600 font-semibold mb-1 uppercase tracking-wider">Casual (CL)</p>
                   <p className="text-3xl font-bold text-amber-700">{balances.cl}</p>
-                </div>
-                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                  <p className="text-xs text-blue-600 font-semibold mb-1 uppercase tracking-wider">Sick (SL)</p>
-                  <p className="text-3xl font-bold text-blue-700">{balances.sl}</p>
                 </div>
                 <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
                   <p className="text-xs text-emerald-600 font-semibold mb-1 uppercase tracking-wider">Comp-Off</p>

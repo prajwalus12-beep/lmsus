@@ -25,7 +25,7 @@ export default async function LeaveRulesPage() {
   const accrualRate = configMap['ACCRUAL_RATE_PL'] || "1.5";
   const accrualBase = configMap['ACCRUAL_BASE_DAYS'] || "20";
   const maxCarryForward = configMap['MAX_CARRY_FORWARD_PL'] || "30";
-  const minWorkedDays = configMap['MIN_WORKED_DAYS_FOR_PL'] || "15";
+  const minWorkedDays = configMap['min_working_days_threshold'] || configMap['MIN_WORKED_DAYS_FOR_PL'] || "5";
   const probationMonths = configMap['PROBATION_PERIOD_MONTHS'] || "6";
   const maxNegative = configMap['MAX_NEGATIVE_LEAVE'] || "-5";
   const isSandwichEnabled = configMap['weekend_sandwich_rule'] === 'true';
@@ -80,56 +80,31 @@ export default async function LeaveRulesPage() {
               </CardContent>
             </Card>
 
-            {/* Casual Leave */}
+            {/* Casual & Sick Leave */}
             <Card className="hover:shadow-md transition-shadow border-slate-200">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <span className="bg-teal-50 text-teal-700 text-xs font-semibold px-2.5 py-1 rounded-md">CL</span>
+                  <span className="bg-teal-50 text-teal-700 text-xs font-semibold px-2.5 py-1 rounded-md">CL / SL</span>
                   <Clock className="w-5 h-5 text-teal-500" />
                 </div>
-                <CardTitle className="text-base mt-2">Casual Leave (CL)</CardTitle>
-                <CardDescription>Unplanned leaves for personal urgent matters.</CardDescription>
+                <CardTitle className="text-base mt-2">Casual &amp; Sick Leave (CL/SL)</CardTitle>
+                <CardDescription>Urgent unplanned absences and medical needs.</CardDescription>
               </CardHeader>
               <CardContent className="text-sm text-slate-600 space-y-2">
                 <div className="flex justify-between border-b pb-1">
-                  <span className="font-medium text-slate-800">Max Request:</span>
-                  <span>2.0 Days per application</span>
+                  <span className="font-medium text-slate-800">Shared Balance:</span>
+                  <span>Deducts from Casual Leave (CL) bucket</span>
                 </div>
                 <div className="flex justify-between border-b pb-1">
-                  <span className="font-medium text-slate-800">Half Days:</span>
-                  <span>Allowed (0.5 Days)</span>
+                  <span className="font-medium text-slate-800">CL Limit:</span>
+                  <span>1.0 Day per application (&gt; 2 calendar days converts to PL)</span>
                 </div>
                 <div className="flex justify-between border-b pb-1">
-                  <span className="font-medium text-slate-800">Conversion Rule:</span>
-                  <span className="text-indigo-600 font-medium">&gt; 2 Days converts to PL</span>
+                  <span className="font-medium text-slate-800">SL Limit:</span>
+                  <span>2.0 Days (Medical certificate required for &ge; 2 days)</span>
                 </div>
                 <p className="text-xs text-slate-500 pt-1">
-                  CL requests are limited to a maximum of 2.0 days at a time. Half days (0.5 days) are allowed. Applying for more than 2 calendar days automatically converts the type to PL.
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Sick Leave */}
-            <Card className="hover:shadow-md transition-shadow border-slate-200">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <span className="bg-rose-50 text-rose-700 text-xs font-semibold px-2.5 py-1 rounded-md">SL</span>
-                  <ShieldAlert className="w-5 h-5 text-rose-500" />
-                </div>
-                <CardTitle className="text-base mt-2">Sick Leave (SL)</CardTitle>
-                <CardDescription>Leaves taken due to illness or medical needs.</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-slate-600 space-y-2">
-                <div className="flex justify-between border-b pb-1">
-                  <span className="font-medium text-slate-800">Max Request:</span>
-                  <span>2.0 Days per application</span>
-                </div>
-                <div className="flex justify-between border-b pb-1">
-                  <span className="font-medium text-slate-800">Half Days:</span>
-                  <span>Allowed (0.5 Days)</span>
-                </div>
-                <p className="text-xs text-slate-500 pt-1">
-                  SL is limited to a maximum of 2.0 days at a time. Requests for more than 2 days will not be submitted. If you want SL for more than 2 days, apply as a PL instead and provide a valid document link. Supported secure storage links: Google Drive, Dropbox, Sharepoint, or internal company.com domains.
+                  CL and SL share a single combined balance bucket. Both half days (0.5) and full days are allowed.
                 </p>
               </CardContent>
             </Card>
@@ -150,11 +125,11 @@ export default async function LeaveRulesPage() {
                   <span>Submit Comp-Off Work Entry</span>
                 </div>
                 <div className="flex justify-between border-b pb-1">
-                  <span className="font-medium text-slate-800">Negative Limit:</span>
-                  <span className="text-red-600 font-semibold">Strictly 0 (No negative)</span>
+                  <span className="font-medium text-slate-800">Negative Balance:</span>
+                  <span className="text-red-600 font-semibold">Strictly 0 (Forbidden)</span>
                 </div>
                 <p className="text-xs text-slate-500 pt-1">
-                  Comp-Off credits are manually earned and approved. Unlike other leaves, they cannot go into a negative balance.
+                  Comp-Off balances are hard-capped. Requests cannot go negative. The submit form disables instantly if requested days exceed your current Comp-Off balance.
                 </p>
               </CardContent>
             </Card>
@@ -166,20 +141,20 @@ export default async function LeaveRulesPage() {
                   <span className="bg-slate-100 text-slate-700 text-xs font-semibold px-2.5 py-1 rounded-md">MAT / LOP</span>
                   <FileText className="w-5 h-5 text-slate-400" />
                 </div>
-                <CardTitle className="text-base mt-2">MAT & Loss of Pay (LOP)</CardTitle>
+                <CardTitle className="text-base mt-2">Maternity, Paternity & LOP</CardTitle>
                 <CardDescription>Maternity/Paternity leaves & unpaid absences.</CardDescription>
               </CardHeader>
               <CardContent className="text-sm text-slate-600 space-y-2">
                 <div className="flex justify-between border-b pb-1">
-                  <span className="font-medium text-slate-800">Maternity/Paternity:</span>
-                  <span>Statutory paid duration</span>
+                  <span className="font-medium text-slate-800">Maternity (MAT):</span>
+                  <span>182 Days Cap (Statutory Paid)</span>
                 </div>
                 <div className="flex justify-between border-b pb-1">
-                  <span className="font-medium text-slate-800">Loss of Pay (LOP):</span>
-                  <span>Uncapped (Unpaid)</span>
+                  <span className="font-medium text-slate-800">Paternity (PAT):</span>
+                  <span>14 Days Cap (Statutory Paid)</span>
                 </div>
                 <p className="text-xs text-slate-500 pt-1">
-                  LOP is automatically calculated or manually applied if leave requests exceed allowed negative balance thresholds.
+                  LOP is uncapped and unpaid. Standard leave requests that exceed negative thresholds are automatically split and routed to LOP (flagged for salary deduction).
                 </p>
               </CardContent>
             </Card>

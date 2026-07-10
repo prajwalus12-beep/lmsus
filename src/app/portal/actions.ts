@@ -50,10 +50,23 @@ export async function submitLeaveRequest(data: {
   try {
     let { userId, type, startDate, endDate, reason, isNegative, negativeAmount, attachmentUrl, halfDay = "NONE" } = data
   
-  // Verify session matches userId
+  // Verify session is active and check permissions
   const session = await getServerSession()
-  if (!session || session.user.id !== userId) {
-    throw new Error("Unauthorized: Session mismatch or not logged in.")
+  if (!session) {
+    throw new Error("Unauthorized: Not logged in.")
+  }
+
+  if (session.user.id !== userId) {
+    const { data: currentUserProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single()
+
+    const isAuthorized = currentUserProfile && ['ADMIN', 'MANAGER'].includes(currentUserProfile.role)
+    if (!isAuthorized) {
+      throw new Error("Unauthorized: You do not have permission to submit leave requests on behalf of other employees.")
+    }
   }
 
   const parseAsUTCDate = (dateStr: string | Date) => {
@@ -263,6 +276,34 @@ export async function submitLeaveRequest(data: {
   }
 
   // 4. Backend Negative Leave Limit Validation (SL/CL mapped to cl, PL mapped to pl)
+  const isPaidLeave = ['PL', 'CL', 'SL'].includes(type)
+  const isCompLeave = type === 'COMP'
+  
+  // Fetch dynamic caps for MAT and PAT
+  const [
+    maternityCapRes,
+    paternityCapRes
+  ] = await Promise.all([
+    supabaseAdmin.from('system_configs').select('value').eq('key', 'maternity_statutory_cap_days').maybeSingle(),
+    supabaseAdmin.from('system_configs').select('value').eq('key', 'paternity_corporate_cap_days').maybeSingle()
+  ])
+  const matCap = parseInt(maternityCapRes?.data?.value || "182")
+  const patCap = parseInt(paternityCapRes?.data?.value || "14")
+
+  if (type === 'MAT' || type === 'PAT') {
+    const existingTypeLeaves = existingLeaves?.filter((l: any) => l.type === type) || [];
+    const usedDays = existingTypeLeaves.reduce((sum: number, l: any) => {
+      const sObj = parseAsUTCDate(l.start_date);
+      const eObj = parseAsUTCDate(l.end_date);
+      const { days: d } = calculateRequestedDays(sObj, eObj, holidayDates, isSandwichEnabled, type, false);
+      return sum + d;
+    }, 0);
+    const cap = type === 'MAT' ? matCap : patCap;
+    if (usedDays + days > cap) {
+      throw new Error(`Cannot apply: Total requested ${type === 'MAT' ? 'Maternity' : 'Paternity'} leave (${usedDays + days} days) exceeds the dynamic cap of ${cap} days.`);
+    }
+  }
+
   const activeBucket = (type === 'SL' || type === 'CL') ? 'cl' : type.toLowerCase()
   const { data: balance } = await supabaseAdmin
     .from('leave_balances')
@@ -272,11 +313,123 @@ export async function submitLeaveRequest(data: {
 
   const currentBalance = balance ? balance[activeBucket] || 0 : 0
   const netBalance = currentBalance - days
-  if (netBalance < maxNegativeLimit) {
-    throw new Error(`Cannot apply: Net balance would be ${netBalance.toFixed(1)}, below the minimum allowed limit of ${maxNegativeLimit} days.`)
-  }
-  if (type === 'COMP' && netBalance < 0) {
+
+  if (isCompLeave && netBalance < 0) {
     throw new Error("Compensatory Off cannot go into negative balance.")
+  }
+
+  if (isPaidLeave && netBalance < maxNegativeLimit) {
+    const allowedPaidDays = currentBalance - maxNegativeLimit
+    if (allowedPaidDays <= 0) {
+      // The employee is already at/below the max negative limit. Convert entire request to LOP!
+      type = 'LOP'
+    } else {
+      // Split the request. First N active days as paid leave, rest as LOP.
+      const allRequestDays: Date[] = []
+      let curr = new Date(startObj)
+      while (curr <= endObj) {
+        allRequestDays.push(new Date(curr))
+        curr.setUTCDate(curr.getUTCDate() + 1)
+      }
+
+      // Filter out weekends/holidays if sandwich doesn't apply
+      const activeDays: Date[] = []
+      for (const d of allRequestDays) {
+        const dateStr = d.toISOString().split('T')[0]
+        const isWe = d.getUTCDay() === 0 || d.getUTCDay() === 6
+        const isHol = holidayDates.has(dateStr)
+        const applySandwich = (type === "CL" || type === "PL") && isSandwichEnabled
+        if (!applySandwich && (isWe || isHol)) {
+          continue
+        }
+        activeDays.push(d)
+      }
+
+      const dayWeight = halfDay !== 'NONE' ? 0.5 : 1.0
+      const daysCountNeeded = allowedPaidDays
+      let paidActiveCount = 0
+      let splitIndex = -1
+
+      for (let i = 0; i < activeDays.length; i++) {
+        paidActiveCount += dayWeight
+        if (paidActiveCount >= daysCountNeeded) {
+          splitIndex = i
+          break
+        }
+      }
+
+      if (splitIndex !== -1 && splitIndex < activeDays.length - 1) {
+        const paidEndObj = activeDays[splitIndex]
+        const unpaidStartObj = new Date(paidEndObj)
+        unpaidStartObj.setUTCDate(unpaidStartObj.getUTCDate() + 1)
+
+        const paidDaysCalc = calculateRequestedDays(startObj, paidEndObj, holidayDates, isSandwichEnabled, type, halfDay !== 'NONE')
+        const paidDays = paidDaysCalc.days
+
+        const { data: paidRequest, error: paidError } = await supabaseAdmin
+          .from('leave_requests')
+          .insert({
+            user_id: userId,
+            type: type,
+            start_date: startObj.toISOString(),
+            end_date: paidEndObj.toISOString(),
+            half_day: halfDay,
+            reason: reason + " (Paid Split)",
+            status: "PENDING",
+            is_negative: true,
+            negative_amount: Math.abs(currentBalance - paidDays < 0 ? currentBalance - paidDays : 0),
+            attachment_url: attachmentUrl || null,
+            year: leaveYear,
+          })
+          .select()
+          .single()
+
+        if (paidError) throw new Error(paidError.message)
+
+        const unpaidDaysCalc = calculateRequestedDays(unpaidStartObj, endObj, holidayDates, isSandwichEnabled, 'LOP', halfDay !== 'NONE')
+        const unpaidDays = unpaidDaysCalc.days
+
+        const { data: unpaidRequest, error: unpaidError } = await supabaseAdmin
+          .from('leave_requests')
+          .insert({
+            user_id: userId,
+            type: 'LOP',
+            start_date: unpaidStartObj.toISOString(),
+            end_date: endObj.toISOString(),
+            half_day: halfDay,
+            reason: reason + " (Auto-routed LOP Overage)",
+            status: "PENDING",
+            is_negative: false,
+            negative_amount: 0,
+            attachment_url: attachmentUrl || null,
+            year: leaveYear,
+          })
+          .select()
+          .single()
+
+        if (unpaidError) throw new Error(unpaidError.message)
+
+        // Log the action using admin client
+        await supabaseAdmin.from('audit_logs').insert({
+          user_id: userId,
+          action: 'LEAVE_APPLIED_SPLIT',
+          entity: 'LeaveRequest',
+          entity_id: paidRequest.id,
+          metadata: JSON.stringify({ originalType: type, paidDays, lopDays: unpaidDays, paidRequestId: paidRequest.id, lopRequestId: unpaidRequest.id })
+        })
+
+        revalidatePath("/portal")
+        revalidatePath("/")
+        return { success: true, request: paidRequest, split: true, message: `Request successfully split: ${paidDays} days of ${type} and ${unpaidDays} days of LOP due to exceeding negative balance limits.` }
+      } else {
+        type = 'LOP'
+      }
+    }
+  }
+
+  // Normal processing for LOP (skips limit check), or non-split PL/CL/SL
+  if (!['LOP', 'MAT', 'PAT'].includes(type) && !isCompLeave && netBalance < maxNegativeLimit) {
+    throw new Error(`Cannot apply: Net balance would be ${netBalance.toFixed(1)}, below the minimum allowed limit of ${maxNegativeLimit} days.`)
   }
 
   // Rule 50: Probation Check (Apply AFTER potential conversion, using system override date)

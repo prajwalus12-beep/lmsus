@@ -83,13 +83,14 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
     PL: targetBalances.projectedPl ?? targetBalances.pl, 
     CL: targetBalances.cl, 
     SL: targetBalances.cl, // SL comes under CL
-    COMP: targetBalances.comp 
+    COMP: targetBalances.comp,
+    LOP: Infinity
   };
   
   const currentBalance = activeType ? balanceMap[activeType] : 0;
   const netBalance = currentBalance - projectedDays;
-  const wouldGoNegative = netBalance < 0;
-  const exceedsNegativeLimit = netBalance < MAX_NEGATIVE; 
+  const wouldGoNegative = activeType === 'LOP' ? false : (netBalance < 0);
+  const exceedsNegativeLimit = activeType === 'LOP' ? false : (netBalance < MAX_NEGATIVE); 
   const isSandwichWarning = type === 'CL' && projectedDays > 4 && !convertedToPl;
   const isCompNotAllowed = type === 'COMP' && wouldGoNegative; 
 
@@ -165,7 +166,9 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         return
       }
       
-      if (wouldGoNegative) {
+      if (res.split) {
+        toast.success(res.message || "Leave request submitted and split successfully")
+      } else if (wouldGoNegative) {
         toast.warning(`Leave submitted with negative balance. Balance will be ${netBalance} days. Recovery may apply on exit.`)
       } else {
         toast.success("Leave request submitted successfully")
@@ -183,6 +186,11 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {isCompNotAllowed && (
+        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md" role="alert">
+          Compensatory Off cannot go into negative balance. Apply for Loss of Pay instead.
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="type">Leave Type</Label>
@@ -195,6 +203,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
               <SelectItem value="CL">Casual Leave (CL)</SelectItem>
               <SelectItem value="SL">Sick Leave (SL)</SelectItem>
               <SelectItem value="COMP">Compensatory Off (COMP)</SelectItem>
+              <SelectItem value="LOP">Loss of Pay (LOP)</SelectItem>
             </SelectContent>
           </Select>
         </div>

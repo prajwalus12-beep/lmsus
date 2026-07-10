@@ -20,17 +20,20 @@ export async function calculateMonthlyPLAccrual(
     { data: rateConfig },
     { data: baseConfig },
     { data: thresholdConfig },
+    { data: minWorkingDaysThresholdConfig },
     { data: includePaidLeave }
   ] = await Promise.all([
     supabase.from('system_configs').select('value').eq('key', 'ACCRUAL_RATE_PL').maybeSingle(),
     supabase.from('system_configs').select('value').eq('key', 'ACCRUAL_BASE_DAYS').maybeSingle(),
     supabase.from('system_configs').select('value').eq('key', 'MIN_WORKED_DAYS_FOR_PL').maybeSingle(),
+    supabase.from('system_configs').select('value').eq('key', 'min_working_days_threshold').maybeSingle(),
     supabase.from('system_configs').select('value').eq('key', 'INCLUDE_PAID_LEAVE_IN_ACCRUAL').maybeSingle()
   ])
   
   const rate = parseFloat(rateConfig?.value || "1.5")
   const baseDays = parseInt(baseConfig?.value || "20")
-  const threshold = parseInt(thresholdConfig?.value || "15")
+  // Fetch min_working_days_threshold dynamic variable, fallback to MIN_WORKED_DAYS_FOR_PL, then default to 5
+  const threshold = parseInt(minWorkingDaysThresholdConfig?.value || thresholdConfig?.value || "5")
 
   // 3. Calculate Deductions
   const weekendsCount = allDays.filter(d => isWeekend(d)).length
