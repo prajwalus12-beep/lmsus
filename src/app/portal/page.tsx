@@ -70,20 +70,23 @@ export default async function PortalPage() {
              <CardDescription>Your current entitlement for {new Date().getFullYear()}</CardDescription>
            </CardHeader>
            <CardContent>
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                  <p className="text-xs text-indigo-600 font-semibold mb-1 uppercase tracking-wider">Privilege (PL)</p>
-                  <p className="text-3xl font-bold text-indigo-700">{balances.pl}</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-5 bg-white rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-600" />
+                  <p className="text-xs text-slate-500 font-semibold mb-1 uppercase tracking-wider pl-1">Privilege (PL)</p>
+                  <p className="text-3xl font-extrabold text-slate-900 pl-1">{balances.pl}</p>
                 </div>
-                <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
-                  <p className="text-xs text-amber-600 font-semibold mb-1 uppercase tracking-wider">Casual (CL)</p>
-                  <p className="text-3xl font-bold text-amber-700">{balances.cl}</p>
+                <div className="p-5 bg-white rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500" />
+                  <p className="text-xs text-slate-500 font-semibold mb-1 uppercase tracking-wider pl-1">Casual (CL)</p>
+                  <p className="text-3xl font-extrabold text-slate-900 pl-1">{balances.cl}</p>
                 </div>
-                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                  <p className="text-xs text-emerald-600 font-semibold mb-1 uppercase tracking-wider">Comp-Off</p>
-                  <p className="text-3xl font-bold text-emerald-700">{balances.comp}</p>
+                <div className="p-5 bg-white rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
+                  <p className="text-xs text-slate-500 font-semibold mb-1 uppercase tracking-wider pl-1">Comp-Off</p>
+                  <p className="text-3xl font-extrabold text-slate-900 pl-1">{balances.comp}</p>
                 </div>
-             </div>
+              </div>
            </CardContent>
         </Card>
         

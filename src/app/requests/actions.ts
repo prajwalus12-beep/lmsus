@@ -269,7 +269,7 @@ export async function approveCompOff(id: string) {
     .from('comp_off_work_entries')
     .update({ 
       status: "APPROVED",
-      expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      expiry_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
       approved_by_id: approverId,
       approved_at: new Date().toISOString()
     })

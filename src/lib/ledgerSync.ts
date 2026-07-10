@@ -81,6 +81,8 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
     cl_balance: clBal,
     pl_balance: plBal,
     is_opening: true,
+    is_adjustment: false,
+    is_closing: false,
     working_days: 0
   })
 
@@ -122,7 +124,10 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
         cl_debit: clDebit,
         pl_debit: plDebit,
         cl_balance: clBal,
-        pl_balance: plBal
+        pl_balance: plBal,
+        is_opening: false,
+        is_adjustment: false,
+        is_closing: false
       })
     } else if (ev.kind === 'comp_credit') {
       const credit = ev.data
@@ -134,7 +139,10 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
         description: `Comp-Off Earned: ${credit.reason}`,
         days: credit.days_credited,
         cl_balance: clBal,
-        pl_balance: plBal
+        pl_balance: plBal,
+        is_opening: false,
+        is_adjustment: false,
+        is_closing: false
       })
     } else {
       const adj = ev.data
@@ -162,7 +170,9 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
         cl_credit: clCredit,
         cl_balance: clBal,
         pl_balance: plBal,
-        is_adjustment: true
+        is_opening: false,
+        is_adjustment: true,
+        is_closing: false
       })
     }
   }
@@ -175,6 +185,8 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
     description: 'Closing Balance (as of today)',
     cl_balance: clBal,
     pl_balance: plBal,
+    is_opening: false,
+    is_adjustment: false,
     is_closing: true
   })
 
