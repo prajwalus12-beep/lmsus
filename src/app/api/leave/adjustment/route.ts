@@ -39,14 +39,17 @@ export async function POST(req: NextRequest) {
 
     if (adjError || !adjustment) throw new Error(adjError?.message || "Failed to create adjustment")
 
+    const yearInt = parseInt(effectiveYear)
+
     // 2. Fetch live balance
     const { data: balance, error: balError } = await supabaseAdmin
       .from('leave_balances')
       .select('*')
       .eq('user_id', userId)
-      .single()
+      .eq('year', yearInt)
+      .maybeSingle()
 
-    if (balError || !balance) throw new Error(balError?.message || 'User balance record not found')
+    if (balError || !balance) throw new Error(balError?.message || `User balance record not found for year ${yearInt}`)
 
     const typeKey = leaveType.toLowerCase() // pl, cl, sl, comp
     const currentVal = balance[typeKey] || 0
@@ -59,6 +62,7 @@ export async function POST(req: NextRequest) {
         updated_at: new Date().toISOString()
       })
       .eq('user_id', userId)
+      .eq('year', yearInt)
 
     if (updateBalError) throw new Error(updateBalError.message)
 

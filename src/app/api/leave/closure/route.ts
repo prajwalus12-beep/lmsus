@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { syncUserLedger } from '@/lib/ledgerSync'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -68,10 +69,11 @@ export async function POST(req: NextRequest) {
         processed_by: sessionUser.id
       })
 
-      // 4. Update the LeaveBalance for the new year
-      const { error: updateError } = await supabase
+      // 4. Create the new LeaveBalance for the new year
+      const { error: insertError } = await supabase
         .from('leave_balances')
-        .update({
+        .insert({
+          user_id: balance.user_id,
           year: NEXT_YEAR,
           opening_pl: carryForwardPl,
           opening_cl: CL_ENTITLEMENT,
@@ -87,9 +89,15 @@ export async function POST(req: NextRequest) {
           pl_carry_forward: carryForwardPl,
           updated_at: new Date().toISOString()
         })
-        .eq('id', balance.id)
 
-      if (updateError) throw new Error(updateError.message)
+      if (insertError) throw new Error(insertError.message)
+
+      // Sync the new year's ledger entries (opening balance, etc.)
+      try {
+        await syncUserLedger(balance.user_id, NEXT_YEAR)
+      } catch (syncErr: any) {
+        console.error(`Failed to sync initial ledger for user ${balance.user_id} in ${NEXT_YEAR}:`, syncErr.message)
+      }
 
       // 5. Prep Audit Log
       auditLogInserts.push({

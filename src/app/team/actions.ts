@@ -204,6 +204,16 @@ export async function saveProratedBalances(
   if (!session || session.user.role !== 'ADMIN') throw new Error("Unauthorized")
   const adminUser = session.user as any
 
+  const { data: latestBalance } = await supabaseAdmin
+    .from('leave_balances')
+    .select('id')
+    .eq('user_id', userId)
+    .order('year', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!latestBalance) throw new Error("Leave balance record not found")
+
   const { error: updateError } = await supabaseAdmin
     .from('leave_balances')
     .update({
@@ -214,7 +224,7 @@ export async function saveProratedBalances(
       opening_cl: balances.cl,
       updated_at: new Date().toISOString()
     })
-    .eq('user_id', userId)
+    .eq('id', latestBalance.id)
 
   if (updateError) throw new Error(updateError.message)
 

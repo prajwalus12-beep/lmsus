@@ -29,7 +29,7 @@
     {
       "id": "cmp7y4h5y000l17ji2nfyne84",
       "name": "Priya Sharma",
-      "email": "admin@company.com",
+      "email": "admin@yopmail.com",
       "role": "ADMIN",
       "password": "$2b$12$YIxwLoYrJ01nMgsfV9ZQSe4lZBVcsRqGQPmg9Wj0WwWvscjw.BNUu",
       "departmentId": "cmp7y4h4r000117ji16p4j2xd",
@@ -43,7 +43,7 @@
     {
       "id": "cmp7y4h68000o17jietwqlwgc",
       "name": "Rahul Verma",
-      "email": "manager@company.com",
+      "email": "manager@yopmail.com",
       "role": "MANAGER",
       "password": "$2b$12$YIxwLoYrJ01nMgsfV9ZQSe4lZBVcsRqGQPmg9Wj0WwWvscjw.BNUu",
       "departmentId": "cmp7y4h4j000017jib9vdmytf",
@@ -57,7 +57,7 @@
     {
       "id": "cmp7y4h6h000r17jiz750uea1",
       "name": "John Doe",
-      "email": "john@company.com",
+      "email": "john@yopmail.com",
       "role": "EMPLOYEE",
       "password": "$2b$12$YIxwLoYrJ01nMgsfV9ZQSe4lZBVcsRqGQPmg9Wj0WwWvscjw.BNUu",
       "departmentId": "cmp7y4h4j000017jib9vdmytf",
@@ -71,7 +71,7 @@
     {
       "id": "cmp7y4h6t000u17ji8a8q3u5g",
       "name": "Jane Smith",
-      "email": "jane@company.com",
+      "email": "jane@yopmail.com",
       "role": "EMPLOYEE",
       "password": "$2b$12$YIxwLoYrJ01nMgsfV9ZQSe4lZBVcsRqGQPmg9Wj0WwWvscjw.BNUu",
       "departmentId": "cmp7y4h4y000217ji42m016yd",
@@ -85,7 +85,7 @@
     {
       "id": "cmp7y4h72000x17jiyl3gr0qo",
       "name": "Amit Kumar",
-      "email": "amit@company.com",
+      "email": "amit@yopmail.com",
       "role": "EMPLOYEE",
       "password": "$2b$12$YIxwLoYrJ01nMgsfV9ZQSe4lZBVcsRqGQPmg9Wj0WwWvscjw.BNUu",
       "departmentId": "cmp7y4h56000317jiei4eb6ns",

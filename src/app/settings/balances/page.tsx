@@ -34,7 +34,7 @@ export default async function OpeningBalancesPage() {
   const formattedUsers = (users || []).map((u: any) => {
     let balance = null
     if (Array.isArray(u.leave_balances)) {
-      balance = u.leave_balances[0] || null
+      balance = u.leave_balances.find((b: any) => b.year === new Date().getFullYear()) || [...u.leave_balances].sort((a: any, b: any) => b.year - a.year)[0] || null
     } else {
       balance = u.leave_balances || null
     }

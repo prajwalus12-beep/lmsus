@@ -30,7 +30,7 @@ model User {
   joinDate        DateTime                @default(now())
   daysWorked      Int                     @default(0)
   status          String                  @default("ACTIVE") // ACTIVE, RESIGNED, NOTICE_PERIOD
-  balances        LeaveBalance?
+  balances        LeaveBalance[]
   requests        LeaveRequest[]          @relation("UserRequests")
   approvedRequests LeaveRequest[]         @relation("ApprovedRequests")
   adjustments     LeaveBalanceAdjustment[]
@@ -77,7 +77,7 @@ model LeaveLedgerEntry {
 
 model LeaveBalance {
   id              String   @id @default(cuid())
-  userId          String   @unique
+  userId          String
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   year            Int      @default(2026)
   // Opening Balances (manual entry for first year / system-calculated after)
@@ -100,6 +100,8 @@ model LeaveBalance {
   plCarryForward  Float    @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@unique([userId, year])
 }
 
 model LeaveRequest {

@@ -280,7 +280,7 @@ export function LedgerClient({
                   onClick={async () => {
                     setLoading(true)
                     try {
-                      const res = await fetch("/api/admin/sync-ledger", { method: "POST" })
+                      const res = await fetch(`/api/admin/sync-ledger?year=${selectedYear}`, { method: "POST" })
                       if (res.ok) {
                         toast.success("Ledger database updated and recalculated successfully")
                         fetchLedger(selectedUser.id, selectedYear)
@@ -429,7 +429,7 @@ export function LedgerClient({
                 variant="outline" 
                 size="sm" 
                 onClick={async () => {
-                  const res = await fetch("/api/admin/sync-ledger", { method: "POST" })
+                  const res = await fetch(`/api/admin/sync-ledger?year=${selectedYear}`, { method: "POST" })
                   if (res.ok) {
                     toast.success("Ledger database updated successfully")
                     fetchLedger(selectedUser.id, selectedYear)

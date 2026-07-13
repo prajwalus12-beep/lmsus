@@ -19,7 +19,9 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
   ])
 
   if (!user) return
-  const balance = Array.isArray(user.leave_balances) ? user.leave_balances[0] : user.leave_balances
+  const balance = Array.isArray(user.leave_balances) 
+    ? user.leave_balances.find((b: any) => b.year === year) 
+    : (user.leave_balances && user.leave_balances.year === year ? user.leave_balances : null)
   if (!balance) return
 
   const holidayDates = new Set((holidays || []).map((h: any) => h.date.split('T')[0]))
@@ -192,7 +194,7 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
 
   await supabase.from('leave_ledger_entries').insert(ledgerEntries)
 
-  // Sync master balance table with all components
+  // Sync master balance table with all components for the specified year
   await supabase
     .from('leave_balances')
     .update({
@@ -206,4 +208,5 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
       updated_at: new Date().toISOString()
     })
     .eq('user_id', user.id)
+    .eq('year', year)
 }

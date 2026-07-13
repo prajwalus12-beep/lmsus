@@ -25,7 +25,7 @@ export default async function DashboardPage() {
     supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
     supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('status', 'RESIGNED'),
     supabaseAdmin.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
-    supabaseAdmin.from('leave_balances').select('pl_used, cl_used')
+    supabaseAdmin.from('leave_balances').select('pl_used, cl_used').eq('year', new Date().getFullYear())
   ])
   
   // 2. Calculations

@@ -29,6 +29,7 @@ export default async function TeamPage() {
     supabaseAdmin
       .from('leave_balances')
       .select('*')
+      .order('year', { ascending: false })
   ])
 
   if (uError) console.error("Error fetching users:", uError)
@@ -36,7 +37,11 @@ export default async function TeamPage() {
 
   const balanceMap = new Map()
   if (allBalances) {
-    allBalances.forEach(b => balanceMap.set(b.user_id, b))
+    allBalances.forEach(b => {
+      if (!balanceMap.has(b.user_id)) {
+        balanceMap.set(b.user_id, b)
+      }
+    })
   }
 
   const formattedData = (users || []).map((user: any) => {

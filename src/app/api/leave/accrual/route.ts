@@ -53,15 +53,16 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // Fetch user's current leave balance
+      // Fetch user's current leave balance for the accrual year
       const { data: balance } = await supabase
         .from('leave_balances')
         .select('pl, pl_accrued')
         .eq('user_id', user.id)
-        .single()
+        .eq('year', year)
+        .maybeSingle()
 
       if (balance) {
-        // Update the user's actual balance
+        // Update the user's actual balance for that year
         await supabase
           .from('leave_balances')
           .update({
@@ -70,9 +71,10 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString()
           })
           .eq('user_id', user.id)
+          .eq('year', year)
       }
 
-      await syncUserLedger(user.id)
+      await syncUserLedger(user.id, year)
 
       results.push({ user: user.name, accrued: calc.accrued })
     }

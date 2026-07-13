@@ -49,14 +49,14 @@ export function Sidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
   let visibleNavItems = navItems;
 
   if (role === "EMPLOYEE") {
-    // Remove Admin/Manager modules for Employees
+    // Remove Admin/Manager modules for Employees (including Holidays and Team Directory)
     visibleNavItems = navItems.filter(item => 
-      ["My Portal", "Leave Ledger", "Leave Register", "Calendar", "Holidays", "Team Directory", "Profile", "Leave Rules"].includes(item.name)
+      ["My Portal", "Leave Ledger", "Leave Register", "Calendar", "Profile", "Leave Rules"].includes(item.name)
     );
   } else if (role === "MANAGER") {
-    // Managers see everything except deep settings
+    // Managers see everything except deep settings and Holidays
     visibleNavItems = navItems.filter(item => 
-      !["Opening Balances", "Settings"].includes(item.name)
+      !["Opening Balances", "Settings", "Holidays"].includes(item.name)
     );
   } else if (role === "ADMIN") {
     // Admin sees everything except personal portal (Rule 3.0 / LMS-AUT-04)

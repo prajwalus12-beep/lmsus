@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/supabaseServer'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { syncUserLedger } from '@/lib/ledgerSync'
 import fs from 'fs'
 import path from 'path'
 export async function POST(req: NextRequest) {
@@ -61,25 +62,42 @@ export async function POST(req: NextRequest) {
         user_metadata: { name: u.name, role: u.role }
       })
 
+      let newUid = ""
       if (authError) {
-        console.error(`Error restoring user ${u.email}:`, authError.message)
-        continue
+        // Retrieve the existing user's ID (like the logged-in admin)
+        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
+        const found = existingUsers?.users?.find(eu => eu.email === u.email)
+        if (found) {
+          newUid = found.id
+        } else {
+          console.error(`Error restoring user ${u.email}:`, authError.message)
+          continue
+        }
+      } else {
+        newUid = authData.user.id
       }
 
-      const newUid = authData.user.id
       user_id_map[u.id] = newUid
 
-      // Update profiles with metadata
-      await supabaseAdmin
+      // Upsert the profile (since they were cleared earlier)
+      const { error: profileError } = await supabaseAdmin
         .from('profiles')
-        .update({
+        .upsert({
+          id: newUid,
+          name: u.name,
+          email: u.email,
+          role: u.role,
           department_id: u.departmentId || null,
           join_date: u.joinDate,
           status: u.status,
           communication_email: u.communicationEmail,
-          created_at: u.createdAt
+          created_at: u.createdAt,
+          updated_at: new Date().toISOString()
         })
-        .eq('id', newUid)
+
+      if (profileError) {
+        console.error(`Error upserting profile for ${u.email}:`, profileError.message)
+      }
     }
 
     // 5. Restore leave balances
@@ -125,6 +143,15 @@ export async function POST(req: NextRequest) {
       value: c.value,
       created_at: c.createdAt
     })))
+
+    // Sync all user ledgers for 2026 to ensure the UI is fully populated immediately
+    for (const newUid of Object.values(user_id_map)) {
+      try {
+        await syncUserLedger(newUid, 2026)
+      } catch (syncErr: any) {
+        console.error(`Failed to sync ledger for user ${newUid}:`, syncErr.message)
+      }
+    }
 
     // Log reset
     await supabaseAdmin.from('audit_logs').insert({

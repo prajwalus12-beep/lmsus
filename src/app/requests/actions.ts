@@ -64,11 +64,14 @@ export async function approveRequest(id: string) {
     const rawLeaveType = (effectiveType || request.type).toLowerCase() // Use effectiveType (Rule 37)
     const leaveType = rawLeaveType === "sl" ? "cl" : rawLeaveType
     
+    const requestYear = new Date(request.start_date).getFullYear()
+
     const { data: balance } = await supabaseAdmin
       .from('leave_balances')
       .select('*')
       .eq('user_id', request.user_id)
-      .single()
+      .eq('year', requestYear)
+      .maybeSingle()
 
     if (balance) {
       const currentVal = balance[leaveType] || 0
@@ -88,6 +91,7 @@ export async function approveRequest(id: string) {
         .from('leave_balances')
         .update(updateData)
         .eq('user_id', request.user_id)
+        .eq('year', requestYear)
 
       if (updateBalError) throw new Error(updateBalError.message)
       
@@ -279,13 +283,16 @@ export async function approveCompOff(id: string) {
 
   if (entryError || !entry) throw new Error(entryError?.message || "Failed to approve comp-off entry")
 
+  const entryYear = new Date(entry.date_worked).getFullYear()
+
   const { data: balance, error: balError } = await supabaseAdmin
     .from('leave_balances')
     .select('comp')
     .eq('user_id', entry.user_id)
-    .single()
+    .eq('year', entryYear)
+    .maybeSingle()
 
-  if (balError || !balance) throw new Error(balError?.message || "Failed to fetch leave balance")
+  if (balError || !balance) throw new Error(balError?.message || "Failed to fetch leave balance for year " + entryYear)
 
   const { error: updateBalError } = await supabaseAdmin
     .from('leave_balances')
@@ -293,6 +300,7 @@ export async function approveCompOff(id: string) {
       comp: (balance.comp || 0) + entry.days_credited
     })
     .eq('user_id', entry.user_id)
+    .eq('year', entryYear)
 
   if (updateBalError) throw new Error(updateBalError.message)
 

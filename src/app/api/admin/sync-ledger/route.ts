@@ -12,6 +12,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const { searchParams } = new URL(req.url)
+    const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()))
+
     const supabase = await getSupabaseServer()
     const { data: users, error } = await supabase
       .from('profiles')
@@ -22,7 +25,7 @@ export async function POST(req: NextRequest) {
     if (error) throw new Error(error.message)
 
     for (const user of (users || [])) {
-      await syncUserLedger(user.id, 2026)
+      await syncUserLedger(user.id, year)
     }
 
     return NextResponse.json({ success: true })

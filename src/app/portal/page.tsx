@@ -27,7 +27,7 @@ export default async function PortalPage() {
     { data: maxNegativeConfig },
     { data: requests }
   ] = await Promise.all([
-    supabaseAdmin.from('leave_balances').select('*').eq('user_id', userId).single(),
+    supabaseAdmin.from('leave_balances').select('*').eq('user_id', userId).order('year', { ascending: false }).limit(1).maybeSingle(),
     supabaseAdmin.from('system_configs').select('value').eq('key', 'MAX_NEGATIVE_LEAVE').single(),
     supabaseAdmin.from('leave_requests').select('*').eq('user_id', userId).order('created_at', { ascending: false })
   ])

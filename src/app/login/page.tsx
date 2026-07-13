@@ -12,7 +12,7 @@ import { PuppyLoader } from "@/components/ui/PuppyLoader"
 
 const TEST_ACCOUNTS = [
   {
-    name: "Admin User",
+    name: "Priya Sharma",
     email: "admin@yopmail.com",
     role: "HR Admin",
     dept: "HR",
@@ -36,18 +36,18 @@ const TEST_ACCOUNTS = [
     dot: "bg-green-500",
   },
   {
-    name: "Alice Wong",
-    email: "alice.wong@yopmail.com",
+    name: "Jane Smith",
+    email: "jane@yopmail.com",
     role: "Employee",
     dept: "Sales",
     color: "bg-amber-100 text-amber-700 border-amber-200",
     dot: "bg-amber-500",
   },
   {
-    name: "Diana Prince",
-    email: "diana.prince@yopmail.com",
-    role: "Employee (Probation)",
-    dept: "Engineering",
+    name: "Amit Kumar",
+    email: "amit@yopmail.com",
+    role: "Employee (Notice)",
+    dept: "Finance",
     color: "bg-red-100 text-red-700 border-red-200",
     dot: "bg-red-500",
   },
