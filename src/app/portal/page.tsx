@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress"
 import { LeaveRequestForm } from "./LeaveRequestForm"
 import { CompOffRequest } from "./CompOffRequest"
 import { redirect } from 'next/navigation'
+import { getSystemDate } from '@/lib/systemDate'
 
 export default async function PortalPage() {
   const session = await getServerSession()
@@ -20,17 +21,39 @@ export default async function PortalPage() {
   }
 
   const userId = session.user.id
+  const systemDate = await getSystemDate()
+  const currentYear = systemDate.getFullYear()
 
   // Use supabaseAdmin to bypass RLS for fetching
   const [
-    { data: balances },
+    balanceResponse,
     { data: maxNegativeConfig },
     { data: requests }
   ] = await Promise.all([
-    supabaseAdmin.from('leave_balances').select('*').eq('user_id', userId).order('year', { ascending: false }).limit(1).maybeSingle(),
+    supabaseAdmin.from('leave_balances').select('*').eq('user_id', userId).eq('year', currentYear).maybeSingle(),
     supabaseAdmin.from('system_configs').select('value').eq('key', 'MAX_NEGATIVE_LEAVE').single(),
     supabaseAdmin.from('leave_requests').select('*').eq('user_id', userId).order('created_at', { ascending: false })
   ])
+
+  let balances = balanceResponse.data
+  if (!balances) {
+    balances = {
+      user_id: userId,
+      year: currentYear,
+      opening_pl: 0,
+      opening_cl: 7,
+      opening_comp: 0,
+      pl: 0,
+      cl: 7,
+      sl: 7,
+      comp: 0,
+      pl_accrued: 0,
+      pl_used: 0,
+      cl_used: 0,
+      sl_used: 0,
+      pl_carry_forward: 0,
+    }
+  }
 
   const maxNegative = parseFloat(maxNegativeConfig?.value || "-5");
 

@@ -1,6 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from '@/lib/supabaseServer'
+import { getServerSession, getSupabaseServer } from '@/lib/supabaseServer'
 import { setSystemDateOverride } from '@/lib/systemDate'
+
+export async function GET() {
+  try {
+    const supabase = await getSupabaseServer()
+    const { data: override } = await supabase
+      .from('system_date_overrides')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (override && override.is_test_mode) {
+      return NextResponse.json({
+        isTestMode: true,
+        overrideDate: override.override_date
+      })
+    }
+  } catch (error) {
+    console.error('Error fetching test mode status:', error)
+  }
+
+  return NextResponse.json({
+    isTestMode: false,
+    overrideDate: null
+  })
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()

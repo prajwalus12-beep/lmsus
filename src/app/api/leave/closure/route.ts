@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
+import { getSystemDate } from '@/lib/systemDate'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await getSupabaseServer()
+  const systemDate = await getSystemDate()
 
   try {
     // 1. Check if year is already closed
@@ -87,7 +89,7 @@ export async function POST(req: NextRequest) {
           cl_used: 0,
           sl_used: 0,
           pl_carry_forward: carryForwardPl,
-          updated_at: new Date().toISOString()
+          updated_at: systemDate.toISOString()
         })
 
       if (insertError) throw new Error(insertError.message)

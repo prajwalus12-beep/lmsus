@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useSignOut } from "@/components/providers/AuthProvider"
 import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -21,10 +21,30 @@ import {
 import { submitLeaveRequest } from "../portal/actions"
 
 
+function formatDateSafe(dateVal: any, includeTime = false) {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return '—';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  if (includeTime) {
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+  return `${year}-${month}-${day}`;
+}
+
 export function SettingsClient({ closures, adjustments, negativeLeaves, testMode, users, showClBalanceToEmployee, emailEnabled: initialEmailEnabled, initialConfigs }: any) {
   const signOut = useSignOut()
   const router = useRouter()
-  const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0])
+  const [testDate, setTestDate] = useState(
+    testMode?.overrideDate 
+      ? new Date(testMode.overrideDate).toISOString().split('T')[0] 
+      : new Date().toISOString().split('T')[0]
+  )
   const [isTestMode, setIsTestMode] = useState(testMode?.isTestMode ?? false)
   const [adjUserId, setAdjUserId] = useState("")
   const [adjType, setAdjType] = useState("PL")
@@ -50,6 +70,22 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   const [paternityCorporateCapDays, setPaternityCorporateCapDays] = useState(initialConfigs?.['paternity_corporate_cap_days'] || "14")
   const [savingGlobalConfigs, setSavingGlobalConfigs] = useState(false)
   const [resetting, setResetting] = useState(false)
+  
+  const [activeTab, setActiveTab] = useState("yearend")
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedTab = sessionStorage.getItem("settingsActiveTab")
+      if (savedTab) {
+        setActiveTab(savedTab)
+      }
+    }
+  }, [])
+
+  const handleTabChange = (val: string) => {
+    setActiveTab(val)
+    sessionStorage.setItem("settingsActiveTab", val)
+  }
 
   // Email settings
   const [emailEnabled, setEmailEnabled] = useState<boolean>(initialEmailEnabled ?? true)
@@ -260,7 +296,62 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
 
   // Stub for test mode scenario simulation
   const handleSimulate = async (scenario: string) => {
-    toast.info(`Simulating: ${scenario} (not yet implemented)`)
+    toast.loading(`Simulating ${scenario}...`, { id: 'simulate-toast' })
+    try {
+      const dateObj = new Date(testDate)
+      if (scenario === "Month-end PL Accrual") {
+        const res = await fetch('/api/leave/accrual', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month: dateObj.getMonth(), year: dateObj.getFullYear() }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          toast.success(`Accrual simulated successfully for ${data.results.length} employees on date ${testDate}.`, { id: 'simulate-toast' })
+          router.refresh()
+        } else {
+          toast.error(data.error || "Failed to run accrual simulation", { id: 'simulate-toast' })
+        }
+      } else if (scenario === "Year-end Carry Forward" || scenario === "Year-end Expiry (CL/SL)") {
+        const res = await fetch('/api/leave/closure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year: dateObj.getFullYear(), remarks: `Simulated via Test Mode: ${scenario}` }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          toast.success(`Year-end closure simulation succeeded for year ${dateObj.getFullYear()}.`, { id: 'simulate-toast' })
+          router.refresh()
+        } else {
+          toast.error(data.error || "Failed to run year-end closure simulation", { id: 'simulate-toast' })
+        }
+      } else if (scenario === "Comp-off Expiry") {
+        const res = await fetch('/api/cron/comp-off-expiry')
+        const data = await res.json()
+        if (data.success) {
+          toast.success(data.message || "Comp-off expiry simulation completed.", { id: 'simulate-toast' })
+          router.refresh()
+        } else {
+          toast.error(data.error || "Failed to run comp-off expiry simulation", { id: 'simulate-toast' })
+        }
+      } else if (scenario === "Probation Completion") {
+        const res = await fetch('/api/leave/test-mode/simulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenario }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          toast.success(data.message || "Probation completion checked successfully.", { id: 'simulate-toast', duration: 6000 })
+        } else {
+          toast.error(data.error || "Failed to run probation simulation", { id: 'simulate-toast' })
+        }
+      } else {
+        toast.error("Unknown scenario", { id: 'simulate-toast' })
+      }
+    } catch (err) {
+      toast.error("Network error running simulation scenario", { id: 'simulate-toast' })
+    }
   }
 
   const handleRunAccrual = async () => {
@@ -292,7 +383,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
         <p className="text-slate-500">System maintenance, policies, year-end closure, and manual adjustments.</p>
       </div>
 
-      <Tabs defaultValue="yearend">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="overflow-x-auto mb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <TabsList className="inline-flex w-max gap-1">
             <TabsTrigger value="yearend"><Lock className="w-4 h-4 mr-1.5" />Year-End Closure</TabsTrigger>
@@ -362,7 +453,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                         <TableRow key={c.id}>
                           <TableCell className="font-semibold">{c.year}</TableCell>
                           <TableCell><Badge variant="destructive">{c.status}</Badge></TableCell>
-                          <TableCell className="text-sm text-slate-500">{new Date(c.closedAt).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-sm text-slate-500">{formatDateSafe(c.closedAt)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -796,6 +887,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                            toast[nextMode ? 'success' : 'warning'](
                              nextMode ? "Test mode ENABLED. System date can now be overridden." : "Test mode DISABLED. Production date restored."
                            )
+                           window.location.reload()
                         } else {
                            toast.error("Failed to toggle test mode")
                         }
@@ -810,13 +902,38 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
 
                 <div className="space-y-2">
                   <Label>Override System Date</Label>
-                  <Input
-                    type="date"
-                    value={testDate}
-                    onChange={e => setTestDate(e.target.value)}
-                    disabled={!isTestMode}
-                  />
-                  <p className="text-xs text-slate-500">Current server date: {new Date().toLocaleDateString()}</p>
+                  <div className="flex gap-2">
+                    <Input
+                      type="date"
+                      value={testDate}
+                      onChange={e => setTestDate(e.target.value)}
+                      disabled={!isTestMode}
+                    />
+                    <Button 
+                      disabled={!isTestMode}
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/leave/test-mode', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: isTestMode, date: testDate }),
+                          })
+                          const data = await res.json()
+                          if (data.success) {
+                            toast.success(`System override date saved as ${testDate}`)
+                            window.location.reload()
+                          } else {
+                            toast.error("Failed to save override date")
+                          }
+                        } catch (err) {
+                          toast.error("Network error saving override date")
+                        }
+                      }}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                  <p className="text-xs text-slate-500">Current server date: {formatDateSafe(new Date())}</p>
                 </div>
 
                 <div className="space-y-2">
@@ -864,9 +981,9 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                     {testMode ? (
                       <TableRow>
                         <TableCell>{testMode.changedByName}</TableCell>
-                        <TableCell>{testMode.oldDate ? new Date(testMode.oldDate).toLocaleDateString() : '—'}</TableCell>
-                        <TableCell>{testMode.newDate ? new Date(testMode.newDate).toLocaleDateString() : '—'}</TableCell>
-                        <TableCell className="text-sm text-slate-500">{new Date(testMode.createdAt).toLocaleString()}</TableCell>
+                        <TableCell>{testMode.oldDate ? formatDateSafe(testMode.oldDate) : '—'}</TableCell>
+                        <TableCell>{testMode.newDate ? formatDateSafe(testMode.newDate) : '—'}</TableCell>
+                        <TableCell className="text-sm text-slate-500">{formatDateSafe(testMode.createdAt, true)}</TableCell>
                       </TableRow>
                     ) : (
                       <TableRow>
@@ -878,6 +995,29 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
               </CardContent>
             </Card>
           </div>
+
+          <Card className="border-amber-200 bg-amber-50/50 mt-6">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-amber-800 flex items-center gap-2 text-base">
+                <ShieldAlert className="w-4 h-4" /> Date Override & Simulation Guidelines
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-amber-700 space-y-2">
+              <p className="font-semibold">Follow these steps to run a simulation successfully:</p>
+              <ol className="list-decimal pl-4 space-y-1">
+                <li>Toggle <strong>Test Mode</strong> to ON and select a future override date.</li>
+                <li>Click <strong>Save</strong> to override the system clock (the page will reload and show the simulated date warning in the top header).</li>
+                <li>Use the simulation buttons above to test scenarios like PL accruals, probation completion checks, or year-end closures.</li>
+              </ol>
+              <p className="font-semibold mt-4">Post-Simulation Cleanup & Data Reset:</p>
+              <p>
+                Since simulations write permanent entries to the database (adjusting leave balances, synchronizing ledgers, and recording closure entries), simply disabling Test Mode will <strong>not</strong> undo these modifications. 
+              </p>
+              <p>
+                To reset the system back to its clean initial state after testing, switch to the <strong>Maintenance</strong> tab and click <strong>Wipe Data & Restore from Seed</strong>.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ── Ledger Settings Tab ── */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Menu, Search, Clock } from "lucide-react";
+import { Bell, Menu, Search, Clock, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,16 +14,54 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const [currentDate, setCurrentDate] = useState("2026-05-16");
+  const [isSystemTestMode, setIsSystemTestMode] = useState(false);
+  const [systemOverrideDate, setSystemOverrideDate] = useState<string | null>(null);
   const { data: session } = useSession();
   const signOut = useSignOut();
 
-  const handleTimeTravel = () => {
-    toast.success(`System date simulated to ${currentDate}`);
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('/api/leave/test-mode');
+        const data = await res.json();
+        setIsSystemTestMode(data.isTestMode);
+        if (data.isTestMode && data.overrideDate) {
+          const formattedDate = new Date(data.overrideDate).toISOString().split('T')[0];
+          setSystemOverrideDate(new Date(data.overrideDate).toLocaleDateString());
+          setCurrentDate(formattedDate);
+        } else {
+          setSystemOverrideDate(null);
+          setCurrentDate(new Date().toISOString().split('T')[0]);
+        }
+      } catch (err) {
+        console.error("Failed to load test mode status", err);
+      }
+    };
+    fetchStatus();
+  }, []);
+
+  const handleTimeTravel = async () => {
+    try {
+      const res = await fetch('/api/leave/test-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true, date: currentDate }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`System date simulated to ${currentDate}`);
+        window.location.reload();
+      } else {
+        toast.error("Failed to apply time travel. Make sure you are an Admin.");
+      }
+    } catch (err) {
+      toast.error("Network error applying time travel");
+    }
   };
 
   const initials = session?.user?.name
@@ -45,21 +83,14 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="hidden lg:flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 text-indigo-700 text-sm">
-          <Clock className="w-4 h-4" />
-          <span className="font-medium">Time Travel Simulator:</span>
-          <input 
-            type="date" 
-            value={currentDate}
-            onChange={(e) => setCurrentDate(e.target.value)}
-            className="bg-transparent border-none outline-none font-semibold w-[120px]"
-          />
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-indigo-700 hover:text-indigo-800 hover:bg-indigo-200" onClick={handleTimeTravel}>
-            Apply
-          </Button>
+      {isSystemTestMode && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 font-semibold px-3 py-1 rounded-full text-xs animate-pulse">
+          <FlaskConical className="w-3.5 h-3.5 text-amber-600" />
+          <span>Test Mode Active (Simulated Date: {systemOverrideDate})</span>
         </div>
+      )}
 
+      <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" className="relative text-slate-600">
           <Bell className="w-5 h-5" />
           <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>

@@ -1,8 +1,10 @@
 import { getSupabaseServer } from './supabaseServer'
 import { supabaseAdmin } from './supabaseAdmin'
 import { calculateRequestedDays } from './leaveCalculator'
+import { getSystemDate } from './systemDate'
 
 export async function syncUserLedger(userId: string, year: number = 2026) {
+  const systemDate = await getSystemDate()
   const startOfYear = `${year}-01-01T00:00:00.000Z`
   const endOfYear = `${year}-12-31T23:59:59.999Z`
 
@@ -182,7 +184,7 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
   // Add Closing Entry
   ledgerEntries.push({
     user_id: user.id,
-    date: new Date().toISOString(),
+    date: systemDate.toISOString(),
     type: 'CLOSING',
     description: 'Closing Balance (as of today)',
     cl_balance: clBal,
@@ -205,7 +207,7 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
       pl_used: plUsed,
       cl_used: clUsed,
       sl_used: slUsed,
-      updated_at: new Date().toISOString()
+      updated_at: systemDate.toISOString()
     })
     .eq('user_id', user.id)
     .eq('year', year)
