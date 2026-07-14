@@ -19,7 +19,7 @@ export default async function SettingsPage() {
   ] = await Promise.all([
     supabase.from('leave_year_closures').select('*').order('year', { ascending: false }),
     supabaseAdmin.from('leave_balance_adjustments').select('*, profiles!user_id(name)').order('created_at', { ascending: false }).limit(1000),
-    supabase.from('negative_leave_trackings').select('*, profiles(name)').order('created_at', { ascending: false }),
+    supabaseAdmin.from('negative_leave_trackings').select('*, profiles!user_id(name)').order('created_at', { ascending: false }),
     supabase.from('system_date_overrides').select('*').order('created_at', { ascending: false }).limit(1),
     supabaseAdmin.from('profiles').select('id, name, departments(name)').order('name', { ascending: true }),
     supabase.from('system_configs').select('*')

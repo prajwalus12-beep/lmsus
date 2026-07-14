@@ -102,6 +102,29 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   const [applyLoading, setApplyLoading] = useState(false)
   const [adjPage, setAdjPage] = useState(1)
 
+  const handleUpdateNegativeStatus = async (id: string, newStatus: 'RECOVERED' | 'WRITTEN_OFF') => {
+    const actionName = newStatus === 'RECOVERED' ? 'recover' : 'write off'
+    const remarks = prompt(`Are you sure you want to mark this negative leave as ${newStatus}? Enter optional remarks:`)
+    if (remarks === null) return // User cancelled
+
+    try {
+      const res = await fetch('/api/leave/negative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: newStatus, remarks }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(`Record marked as ${newStatus} successfully.`)
+        router.refresh()
+      } else {
+        toast.error(data.error || 'Failed to update record')
+      }
+    } catch (err) {
+      toast.error('Network error during update')
+    }
+  }
+
   const handleCloseYear = async () => {
     if (!confirm("Are you sure you want to close the year 2026? This will reset CL/SL and carry forward PL. This action is irreversible.")) return
     setClosing(true)
@@ -824,7 +847,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                 </div>
               ) : (
                 <Table>
-                  <TableHeader className="bg-slate-50">
+                   <TableHeader className="bg-slate-50">
                     <TableRow>
                       <TableHead>Employee</TableHead>
                       <TableHead>Leave Type</TableHead>
@@ -832,6 +855,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                       <TableHead>Daily Salary</TableHead>
                       <TableHead>Recovery Amount</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -843,7 +867,30 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                         <TableCell>₹{n.dailySalary.toLocaleString('en-IN')}</TableCell>
                         <TableCell className="font-semibold text-red-700">₹{n.recoveryAmount.toLocaleString('en-IN')}</TableCell>
                         <TableCell>
-                          <Badge variant={n.status === 'RECOVERED' ? 'default' : 'secondary'}>{n.status}</Badge>
+                          <Badge variant={n.status === 'RECOVERED' ? 'default' : (n.status === 'WRITTEN_OFF' ? 'destructive' : 'secondary')}>{n.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {n.status === 'PENDING' ? (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white text-xs h-7 px-2.5"
+                                onClick={() => handleUpdateNegativeStatus(n.id, 'RECOVERED')}
+                              >
+                                Mark Recovered
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 text-xs h-7 px-2.5"
+                                onClick={() => handleUpdateNegativeStatus(n.id, 'WRITTEN_OFF')}
+                              >
+                                Write Off
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">Settled</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
