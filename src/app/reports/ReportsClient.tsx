@@ -17,12 +17,12 @@ export function ReportsClient({ data }: { data: any[] }) {
     const headers = [
       "Employee", "Department",
       "Opening PL", "PL Accrued", "PL Used", "Carry Fwd", "PL Balance",
-      "CL Balance", "SL Balance", "COMP Balance"
+      "CL/SL Balance", "COMP Balance"
     ]
     const csvContent = [
       headers.join(","),
       ...data.map(row =>
-        `"${row.name}","${row.department}",${row.openingPl},${row.plAccrued},${row.plUsed},${row.plCarryForward},${row.pl},${row.cl},${row.sl},${row.comp}`
+        `"${row.name}","${row.department}",${row.openingPl},${row.plAccrued},${row.plUsed},${row.plCarryForward},${row.pl},${row.cl},${row.comp}`
       )
     ].join("\n")
 
@@ -72,8 +72,8 @@ export function ReportsClient({ data }: { data: any[] }) {
     doc.text("2. Casual & Sick Leave (CL/SL) Ledger", 14, afterPl)
     autoTable(doc, {
       startY: afterPl + 4,
-      head: [["Employee", "Dept", "CL Balance", "SL Balance", "CL Used", "SL Used"]],
-      body: data.map(row => [row.name, row.department, row.cl, row.sl, row.clUsed, row.slUsed]),
+      head: [["Employee", "Dept", "CL/SL Balance", "CL Used", "SL Used"]],
+      body: data.map(row => [row.name, row.department, row.cl, row.clUsed, row.slUsed]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [245, 158, 11] },
       alternateRowStyles: { fillColor: [248, 249, 250] },
@@ -195,9 +195,8 @@ export function ReportsClient({ data }: { data: any[] }) {
                   <TableRow>
                     <TableHead>Employee</TableHead>
                     <TableHead>Department</TableHead>
-                    <TableHead className="text-right">CL Balance</TableHead>
+                    <TableHead className="text-right">CL/SL Balance</TableHead>
                     <TableHead className="text-right">CL Used</TableHead>
-                    <TableHead className="text-right">SL Balance</TableHead>
                     <TableHead className="text-right">SL Used</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -213,7 +212,6 @@ export function ReportsClient({ data }: { data: any[] }) {
                       <TableCell>{row.department}</TableCell>
                       <TableCell className="text-right font-semibold text-amber-600">{row.cl}</TableCell>
                       <TableCell className="text-right text-slate-500">−{row.clUsed}</TableCell>
-                      <TableCell className="text-right font-semibold text-red-600">{row.sl}</TableCell>
                       <TableCell className="text-right text-slate-500">−{row.slUsed}</TableCell>
                     </TableRow>
                   ))}
@@ -263,8 +261,7 @@ export function ReportsClient({ data }: { data: any[] }) {
                     <TableHead>Employee</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead className="text-right">PL Balance</TableHead>
-                    <TableHead className="text-right">CL Balance</TableHead>
-                    <TableHead className="text-right">SL Balance</TableHead>
+                    <TableHead className="text-right">CL/SL Balance</TableHead>
                     <TableHead>Recovery Required</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -286,7 +283,6 @@ export function ReportsClient({ data }: { data: any[] }) {
                         <TableCell>{row.department}</TableCell>
                         <TableCell className={`text-right font-bold ${row.pl < 0 ? 'text-red-600' : ''}`}>{row.pl}</TableCell>
                         <TableCell className={`text-right font-bold ${row.cl < 0 ? 'text-red-600' : ''}`}>{row.cl}</TableCell>
-                        <TableCell className={`text-right font-bold ${row.sl < 0 ? 'text-red-600' : ''}`}>{row.sl}</TableCell>
                         <TableCell>
                           <Badge variant="destructive">
                             {row.negativeTracking.some((nt: any) => nt.status === 'PENDING') ? 'Recovery Pending' : 'Flagged'}
