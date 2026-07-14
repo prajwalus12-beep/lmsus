@@ -74,7 +74,8 @@ export function DataTable<TData, TValue>({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Statuses</SelectItem>
-            <SelectItem value="PENDING">Pending</SelectItem>
+            <SelectItem value="PENDING">Pending (L0)</SelectItem>
+            <SelectItem value="L1_APPROVED">L1 Approved</SelectItem>
             <SelectItem value="HR_APPROVED">Approved</SelectItem>
             <SelectItem value="REJECTED">Rejected</SelectItem>
           </SelectContent>

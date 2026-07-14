@@ -7,7 +7,7 @@ export async function GET() {
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('email', 'admin@company.com')
+      .eq('email', 'admin@yopmail.com')
       .maybeSingle()
 
     if (error || !profile) {

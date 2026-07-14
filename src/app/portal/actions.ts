@@ -100,7 +100,7 @@ export async function submitLeaveRequest(data: {
     supabase.from('system_configs').select('value').eq('key', 'weekend_sandwich_rule').single(),
     supabase.from('system_configs').select('value').eq('key', 'PROBATION_PERIOD_MONTHS').single(),
     supabase.from('system_configs').select('value').eq('key', 'MAX_NEGATIVE_LEAVE').maybeSingle(),
-    supabaseAdmin.from('leave_requests').select('start_date, end_date, type').eq('user_id', userId).in('status', ['PENDING', 'L1_APPROVED', 'HR_APPROVED'])
+    supabaseAdmin.from('leave_requests').select('start_date, end_date, type, status').eq('user_id', userId).in('status', ['PENDING', 'L1_APPROVED', 'HR_APPROVED'])
   ]);
 
   console.log("SUBMIT DEBUG - User Query:", userRes);
@@ -133,6 +133,16 @@ export async function submitLeaveRequest(data: {
   // Rule 37: Auto-convert CL to PL
   if (convertedToPl) {
     type = "PL"
+  }
+
+  // Date overlap validation check
+  for (const existing of existingLeaves || []) {
+    const existingStart = parseAsUTCDate(existing.start_date)
+    const existingEnd = parseAsUTCDate(existing.end_date)
+    const overlaps = startObj <= existingEnd && endObj >= existingStart
+    if (overlaps) {
+      throw new Error(`Cannot apply: You already have an overlapping ${existing.type} leave request (${existing.status.replace(/_/g, ' ')}).`)
+    }
   }
 
   // 1. Block Half-day for PL
@@ -490,7 +500,8 @@ export async function submitLeaveRequest(data: {
     .eq('status', 'ACTIVE')
 
   const adminEmails = (adminsAndManagers || []).map((u: any) => u.communication_email || u.email)
-  const applicantEmail = user?.communication_email || user?.email || "noreply@company.com"
+  const fallbackUsername = user?.name ? user.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply'
+  const applicantEmail = user?.communication_email || user?.email || `${fallbackUsername}@yopmail.com`
 
   const formattedStartDate = new Date(startDate).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric'
@@ -681,7 +692,8 @@ export async function submitCompOffWork(data: {
     .eq('status', 'ACTIVE')
 
   const adminEmails = (adminsAndManagers || []).map((u: any) => u.communication_email || u.email)
-  const applicantEmail = user?.communication_email || user?.email || "noreply@company.com"
+  const fallbackUsername = user?.name ? user.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply'
+  const applicantEmail = user?.communication_email || user?.email || `${fallbackUsername}@yopmail.com`
 
   const formattedDate = new Date(dateWorked).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric'

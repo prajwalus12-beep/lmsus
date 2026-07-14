@@ -24,7 +24,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
     supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('status', 'RESIGNED'),
-    supabaseAdmin.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
+    supabaseAdmin.from('leave_requests').select('*', { count: 'exact', head: true }).in('status', ['PENDING', 'L1_APPROVED']),
     supabaseAdmin.from('leave_balances').select('pl_used, cl_used').eq('year', new Date().getFullYear())
   ])
   

@@ -148,7 +148,16 @@ export function ProfileClient() {
               onChange={(e) => setCommEmail(e.target.value)} 
               placeholder="Enter your personal/work email"
             />
-            <p className="text-[10px] text-slate-400">Default: noreply@company.com</p>
+            {(() => {
+              const fallbackUsername = session?.user?.name 
+                ? session.user.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') 
+                : 'noreply';
+              return (
+                <p className="text-[10px] text-slate-400">
+                  Default: {fallbackUsername}@yopmail.com
+                </p>
+              );
+            })()}
           </div>
           <Button onClick={handleUpdate} disabled={loading} className="bg-indigo-600 hover:bg-indigo-700">
             {loading ? "Updating..." : "Save Preferences"}

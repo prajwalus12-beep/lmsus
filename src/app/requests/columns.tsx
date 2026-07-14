@@ -117,7 +117,7 @@ export const columns: ColumnDef<LeaveRequestRow>[] = [
       return (
         <Badge variant={
           status === 'HR_APPROVED' ? 'default' : 
-          status === 'PENDING' ? 'secondary' : 'destructive'
+          status === 'REJECTED' ? 'destructive' : 'secondary'
         }>
           {status}
         </Badge>
@@ -143,33 +143,37 @@ export const columns: ColumnDef<LeaveRequestRow>[] = [
             <DropdownMenuItem onClick={() => navigator.clipboard.writeText(req.id)}>
               Copy request ID
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              onClick={async () => {
-                try {
-                  await approveRequest(req.id)
-                  toast.success("Request approved")
-                } catch (e) {
-                  toast.error("Failed to approve")
-                }
-              }} 
-              className="text-green-600"
-            >
-              <Check className="mr-2 h-4 w-4" /> Approve
-            </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={async () => {
-                try {
-                  await rejectRequest(req.id)
-                  toast.success("Request rejected")
-                } catch (e) {
-                  toast.error("Failed to reject")
-                }
-              }} 
-              className="text-red-600"
-            >
-              <X className="mr-2 h-4 w-4" /> Reject
-            </DropdownMenuItem>
+            {req.status !== 'HR_APPROVED' && req.status !== 'REJECTED' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    try {
+                      await approveRequest(req.id)
+                      toast.success("Request approved")
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Failed to approve")
+                    }
+                  }} 
+                  className="text-green-600"
+                >
+                  <Check className="mr-2 h-4 w-4" /> Approve
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    try {
+                      await rejectRequest(req.id)
+                      toast.success("Request rejected")
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Failed to reject")
+                    }
+                  }} 
+                  className="text-red-600"
+                >
+                  <X className="mr-2 h-4 w-4" /> Reject
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )
@@ -208,7 +212,7 @@ export const compOffColumns: ColumnDef<any>[] = [
       return (
         <Badge variant={
           status === 'APPROVED' ? 'default' : 
-          status === 'PENDING' ? 'secondary' : 'destructive'
+          status === 'REJECTED' ? 'destructive' : 'secondary'
         }>
           {status}
         </Badge>
@@ -231,32 +235,36 @@ export const compOffColumns: ColumnDef<any>[] = [
             <DropdownMenuGroup>
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
             </DropdownMenuGroup>
-            <DropdownMenuItem 
-              onClick={async () => {
-                try {
-                  await approveCompOff(co.id)
-                  toast.success("Comp-off approved")
-                } catch (e) {
-                  toast.error("Failed to approve")
-                }
-              }} 
-              className="text-green-600"
-            >
-              <Check className="mr-2 h-4 w-4" /> Approve
-            </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={async () => {
-                try {
-                  await rejectCompOff(co.id)
-                  toast.success("Comp-off rejected")
-                } catch (e) {
-                  toast.error("Failed to reject")
-                }
-              }} 
-              className="text-red-600"
-            >
-              <X className="mr-2 h-4 w-4" /> Reject
-            </DropdownMenuItem>
+            {co.status !== 'APPROVED' && co.status !== 'REJECTED' && (
+              <>
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    try {
+                      await approveCompOff(co.id)
+                      toast.success("Comp-off approved")
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Failed to approve")
+                    }
+                  }} 
+                  className="text-green-600"
+                >
+                  <Check className="mr-2 h-4 w-4" /> Approve
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    try {
+                      await rejectCompOff(co.id)
+                      toast.success("Comp-off rejected")
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Failed to reject")
+                    }
+                  }} 
+                  className="text-red-600"
+                >
+                  <X className="mr-2 h-4 w-4" /> Reject
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )

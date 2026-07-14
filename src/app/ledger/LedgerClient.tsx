@@ -131,7 +131,7 @@ export function LedgerClient({
     try {
       const res = await fetch(`/api/leave/ledger?userId=${userId}&year=${yr}`)
       const data = await res.json()
-      if (data.entries) {
+      if (res.ok && data.entries) {
         setEntries(data.entries)
         setSelectedUser(prev => ({
           ...prev,
@@ -142,7 +142,25 @@ export function LedgerClient({
           openingCl: data.balance?.openingCl ?? prev.openingCl,
           openingPl: data.balance?.openingPl ?? prev.openingPl,
         }))
+      } else {
+        setEntries([])
+        setSelectedUser(prev => ({
+          ...prev,
+          id: userId,
+          openingCl: 0,
+          openingPl: 0,
+        }))
+        toast.error(data.error || "No ledger data found for this year")
       }
+    } catch (err) {
+      setEntries([])
+      setSelectedUser(prev => ({
+        ...prev,
+        id: userId,
+        openingCl: 0,
+        openingPl: 0,
+      }))
+      toast.error("Failed to load ledger data")
     } finally {
       setLoading(false)
     }
@@ -597,7 +615,9 @@ export function LedgerClient({
                     <TableCell colSpan={10} className="text-center py-16 text-slate-400">
                       <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
                       <p className="font-medium">No ledger data found for {selectedYear}</p>
-                      <p className="text-xs mt-1">Click "Update Database" to initialize.</p>
+                      <p className="text-xs mt-1">
+                        {isHR ? 'Click "Update Database" to initialize.' : 'Please contact HR/Admin to initialize this year\'s ledger.'}
+                      </p>
                     </TableCell>
                   </TableRow>
                 )}

@@ -17,6 +17,24 @@ export async function approveRequest(id: string) {
 
   const supabase = await getSupabaseServer()
 
+  // Prevent overriding finalized requests
+  const { data: currentReq } = await supabaseAdmin
+    .from('leave_requests')
+    .select('status')
+    .eq('id', id)
+    .single()
+
+  if (!currentReq) throw new Error("Leave request not found")
+  if (currentReq.status === "HR_APPROVED") {
+    throw new Error("Cannot approve: Leave request is already HR Approved.")
+  }
+  if (currentReq.status === "REJECTED") {
+    throw new Error("Cannot approve: Leave request is already Rejected.")
+  }
+  if (currentReq.status === "L1_APPROVED" && userRole !== "ADMIN") {
+    throw new Error("Cannot approve: Leave request has already been approved by L1 manager.")
+  }
+
   // Use supabaseAdmin for update to bypass RLS
   const { data: request, error: updateError } = await supabaseAdmin
     .from('leave_requests')
@@ -136,9 +154,18 @@ export async function approveRequest(id: string) {
     const totalDaysStr = days % 1 === 0 ? String(days) : days.toFixed(1)
     const approverName = session.user.name || 'HR Administrator'
 
+    const isL1 = status === "L1_APPROVED"
+    const subject = isL1 ? `Leave Request Approved by Manager (Pending HR)` : `Leave Request Approved`
+    const descriptionText = isL1 
+      ? `Your leave request has been approved by your manager and is currently pending final HR approval.` 
+      : `We are pleased to inform you that your recent leave request has been approved.`
+    const badgeBg = isL1 ? "#dbeafe" : "#d1fae5"
+    const badgeText = isL1 ? "#1e3a8a" : "#065f46"
+    const badgeLabel = isL1 ? "approved by manager" : "approved"
+
     await sendEmail({
       to: targetEmail,
-      subject: `Leave Request Approved`,
+      subject,
       html: `
 <div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
@@ -146,9 +173,9 @@ export async function approveRequest(id: string) {
     <div style="padding: 32px;">
       <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; margin-bottom: 16px;">Dear ${profile?.name || 'Employee'},</h2>
       <p style="font-size: 15px; color: #334155; line-height: 1.6; margin-bottom: 24px;">
-        We are pleased to inform you that your recent leave request has been <span style="background-color: #d1fae5; color: #065f46; padding: 4px 8px; border-radius: 4px; font-weight: 600;">approved</span>.
+        ${descriptionText}
       </p>
-      <div style="font-size: 13px; font-weight: bold; color: #64748b; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase;">APPROVED LEAVE DETAILS</div>
+      <div style="font-size: 13px; font-weight: bold; color: #64748b; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase;">LEAVE DETAILS</div>
       <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 24px; border-collapse: separate; overflow: hidden;">
         <tr>
           <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px; width: 35%;">Leave Type</td>
@@ -157,6 +184,10 @@ export async function approveRequest(id: string) {
         <tr>
           <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;">Duration</td>
           <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;">${formattedStartDate} <span style="color: #94a3b8; font-weight: normal; margin: 0 4px;">to</span> ${formattedEndDate}</td>
+        </tr>
+        <tr>
+          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 14px;">Status</td>
+          <td style="padding: 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 14px; font-weight: 600;"><span style="background-color: ${badgeBg}; color: ${badgeText}; padding: 4px 8px; border-radius: 4px;">${badgeLabel}</span></td>
         </tr>
         <tr>
           <td style="padding: 16px; color: #64748b; font-size: 14px;">Approved By</td>
@@ -190,6 +221,21 @@ export async function rejectRequest(id: string) {
   const session = await getServerSession()
   if (!session) throw new Error("Unauthorized")
   const approverName = session.user.name || 'HR Administrator'
+
+  // Prevent overriding finalized requests
+  const { data: currentReq } = await supabaseAdmin
+    .from('leave_requests')
+    .select('status')
+    .eq('id', id)
+    .single()
+
+  if (!currentReq) throw new Error("Leave request not found")
+  if (currentReq.status === "HR_APPROVED") {
+    throw new Error("Cannot reject: Leave request is already HR Approved.")
+  }
+  if (currentReq.status === "REJECTED") {
+    throw new Error("Cannot reject: Leave request is already Rejected.")
+  }
 
   const { data: request, error: updateError } = await supabaseAdmin
     .from('leave_requests')
@@ -306,7 +352,8 @@ export async function approveCompOff(id: string) {
 
   // Fetch applicant profile
   const { data: profile } = await supabaseAdmin.from('profiles').select('name, email, communication_email').eq('id', entry.user_id).single()
-  const targetEmail = profile?.communication_email || profile?.email || "noreply@company.com"
+  const fallbackUsername = profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply'
+  const targetEmail = profile?.communication_email || profile?.email || `${fallbackUsername}@yopmail.com`
   const approverName = session.user.name || 'HR Administrator'
 
   const formattedDate = new Date(entry.date_worked).toLocaleDateString('en-IN', {
@@ -380,9 +427,9 @@ export async function rejectCompOff(id: string) {
 
   if (updateError) throw new Error(updateError.message)
 
-  // Fetch applicant profile
   const { data: profile } = await supabaseAdmin.from('profiles').select('name, email, communication_email').eq('id', entry.user_id).single()
-  const targetEmail = profile?.communication_email || profile?.email || "noreply@company.com"
+  const fallbackUsername = profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply'
+  const targetEmail = profile?.communication_email || profile?.email || `${fallbackUsername}@yopmail.com`
 
   const formattedDate = new Date(entry.date_worked).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric'
