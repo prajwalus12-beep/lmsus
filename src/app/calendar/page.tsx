@@ -34,6 +34,7 @@ export default async function CalendarPage() {
       startDate: req.start_date,
       endDate: req.end_date,
       department: dept?.name || 'N/A',
+      status: req.status,
     }
   });
 

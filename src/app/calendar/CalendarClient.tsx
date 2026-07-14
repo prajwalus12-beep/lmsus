@@ -79,9 +79,9 @@ export function CalendarClient({ requests: allRequests, holidays, departments, i
   }
 
   // Active dataset:
-  // - onlyMine=false → empty (no leaves shown by default)
+  // - onlyMine=false → allRequests (show all approved team leaves by default)
   // - onlyMine=true  → server-fetched leaves for current user only
-  const activeRequests = onlyMine ? (myLeaves ?? []) : []
+  const activeRequests = onlyMine ? (myLeaves ?? []) : allRequests
 
   const filteredRequests = useMemo(() => {
     return activeRequests.filter(r => {
@@ -137,21 +137,30 @@ export function CalendarClient({ requests: allRequests, holidays, departments, i
                   H: {isHoliday.name}
                 </div>
               )}
-              {dayRequests.map(req => (
-                <div
-                  key={req.id}
-                  className={`text-[10px] px-1 py-0.5 rounded truncate border mb-0.5 ${
-                    onlyMine
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                      : "bg-indigo-50 text-indigo-700 border-indigo-100"
-                  }`}
-                  title={req.title}
-                >
-                  {req.title.split(" - ")[1] || req.title}
-                </div>
-              ))}
+              {dayRequests.map(req => {
+                const isL1 = req.status === "L1_APPROVED"
+                return (
+                  <div
+                    key={req.id}
+                    className={`text-[10px] px-1 py-0.5 rounded truncate border mb-0.5 ${
+                      onlyMine
+                        ? isL1
+                          ? "bg-emerald-50/50 text-emerald-600 border-emerald-200 border-dashed"
+                          : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                        : isL1
+                          ? "bg-blue-50/60 text-blue-700 border-blue-200 border-dashed"
+                          : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                    }`}
+                    title={`${req.title} (${isL1 ? 'L1 Approved - Pending HR' : 'HR Approved - Confirmed'})`}
+                  >
+                    {onlyMine
+                      ? `${req.title.split(" - ")[1] || req.title}${isL1 ? ' (L1)' : ''}`
+                      : `${req.title.split(" - ")[0] || req.title}${isL1 ? ' (L1)' : ''}`}
+                  </div>
+                )
+              })}
             </div>
-          )
+          );
         })}
       </div>
     )
@@ -262,12 +271,29 @@ export function CalendarClient({ requests: allRequests, holidays, departments, i
                     </div>
                   )}
                   <div className="space-y-2">
-                    {dayRequests.map(req => (
-                      <div key={req.id} className={`text-xs p-2 rounded border ${onlyMine ? "bg-emerald-50 text-emerald-800 border-emerald-100" : "bg-indigo-50 text-indigo-800 border-indigo-100"}`}>
-                        <div className="font-bold">{req.title.split(" - ")[0]}</div>
-                        <div className="text-[10px] opacity-70">{req.title.split(" - ")[1]}</div>
-                      </div>
-                    ))}
+                    {dayRequests.map(req => {
+                      const isL1 = req.status === "L1_APPROVED"
+                      const bgClass = onlyMine
+                        ? isL1
+                          ? "bg-emerald-50/50 text-emerald-800 border-emerald-200 border-dashed"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-100"
+                        : isL1
+                          ? "bg-blue-50/60 text-blue-800 border-blue-200 border-dashed"
+                          : "bg-indigo-50 text-indigo-800 border-indigo-100"
+                      return (
+                        <div
+                          key={req.id}
+                          className={`text-xs p-2 rounded border ${bgClass}`}
+                          title={`${req.title} (${isL1 ? 'L1 Approved - Pending HR' : 'HR Approved - Confirmed'})`}
+                        >
+                          <div className="font-bold flex items-center justify-between gap-1">
+                            <span>{req.title.split(" - ")[0]}</span>
+                            {isL1 && <span className="text-[9px] bg-blue-100 text-blue-800 px-1 rounded font-normal shrink-0">L1</span>}
+                          </div>
+                          <div className="text-[10px] opacity-70">{req.title.split(" - ")[1]}</div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )
@@ -301,13 +327,21 @@ export function CalendarClient({ requests: allRequests, holidays, departments, i
 
               <section>
                 <h4 className="text-sm font-bold text-slate-400 mb-3 uppercase tracking-tight">Approved Leaves</h4>
-                <div className="space-y-3">
-                  {getDayRequests(currentDate).map(req => (
-                    <div key={req.id} className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                      <div className="font-bold text-slate-800">{req.title}</div>
-                      <div className="text-sm text-slate-500">{req.department}</div>
-                    </div>
-                  ))}
+                 <div className="space-y-3">
+                  {getDayRequests(currentDate).map(req => {
+                    const isL1 = req.status === "L1_APPROVED"
+                    return (
+                      <div key={req.id} className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex items-center justify-between">
+                        <div>
+                          <div className="font-bold text-slate-800">{req.title}</div>
+                          <div className="text-sm text-slate-500">{req.department}</div>
+                        </div>
+                        <Badge variant={isL1 ? "outline" : "default"} className={isL1 ? "border-blue-200 text-blue-850 bg-blue-50" : "bg-emerald-600 text-white hover:bg-emerald-600"}>
+                          {isL1 ? "L1 Approved" : "HR Approved"}
+                        </Badge>
+                      </div>
+                    )
+                  })}
                   {getDayRequests(currentDate).length === 0 && (
                     <p className="text-slate-400 italic text-sm">No leaves today.</p>
                   )}
@@ -337,16 +371,26 @@ export function CalendarClient({ requests: allRequests, holidays, departments, i
                     <td className="px-6 py-4">—</td>
                   </tr>
                 ))}
-                {filteredRequests.filter(r => isSameMonth(new Date(r.startDate), currentDate)).map(req => (
-                  <tr key={req.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-medium text-slate-800">{req.title.split(" - ")[0]}</td>
-                    <td className="px-6 py-4"><Badge variant="outline">{req.title.split(" - ")[1]}</Badge></td>
-                    <td className="px-6 py-4">
-                      {format(new Date(req.startDate), "do MMM")} – {format(new Date(req.endDate), "do MMM")}
-                    </td>
-                    <td className="px-6 py-4 text-slate-500">{req.department}</td>
-                  </tr>
-                ))}
+                 {filteredRequests.filter(r => isSameMonth(new Date(r.startDate), currentDate)).map(req => {
+                  const isL1 = req.status === "L1_APPROVED"
+                  return (
+                    <tr key={req.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 font-medium text-slate-800">{req.title.split(" - ")[0]}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline">{req.title.split(" - ")[1]}</Badge>
+                          <Badge variant={isL1 ? "outline" : "secondary"} className={isL1 ? "border-blue-200 bg-blue-50 text-blue-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}>
+                            {isL1 ? "L1 Approved" : "HR Approved"}
+                          </Badge>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {format(new Date(req.startDate), "do MMM")} – {format(new Date(req.endDate), "do MMM")}
+                      </td>
+                      <td className="px-6 py-4 text-slate-500">{req.department}</td>
+                    </tr>
+                  )
+                })}
                 {filteredRequests.filter(r => isSameMonth(new Date(r.startDate), currentDate)).length === 0 &&
                   holidays.filter(h => isSameMonth(new Date(h.date), currentDate)).length === 0 && (
                   <tr>
