@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { syncUserLedger } from '@/lib/ledgerSync'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession()
@@ -13,6 +14,9 @@ export async function GET(req: NextRequest) {
   try {
     const startOfYear = `${year}-01-01T00:00:00.000Z`
     const endOfYear = `${year}-12-31T23:59:59.999Z`
+
+    // Pre-sync ledger to ensure it is dynamically calculated up-to-date
+    await syncUserLedger(targetUserId, year)
 
     const [
       { data: user, error: userError },

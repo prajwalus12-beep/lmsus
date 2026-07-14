@@ -3,6 +3,7 @@ import { getSupabaseServer } from '@/lib/supabaseServer'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { LedgerClient } from './LedgerClient'
 import { redirect } from 'next/navigation'
+import { syncUserLedger } from '@/lib/ledgerSync'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +42,9 @@ export default async function LedgerPage() {
   if (isHR && allUsers.length > 0) {
     targetUserId = allUsers[0].id
   }
+
+  // Pre-sync ledger to ensure it is dynamically calculated up-to-date
+  await syncUserLedger(targetUserId, year)
 
   const [
     { data: clBalanceSetting },

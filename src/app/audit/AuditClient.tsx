@@ -62,6 +62,21 @@ export function AuditClient({ logs }: { logs: any[] }) {
       cell: ({ row }) => <span className="text-xs text-slate-500">{row.original.entity}</span>,
     },
     {
+      accessorKey: "entityId",
+      header: "Entity ID",
+      cell: ({ row }) => <span className="text-xs font-mono text-slate-500">{row.original.entityId || "—"}</span>,
+    },
+    {
+      accessorKey: "oldValue",
+      header: "Old Value",
+      cell: ({ row }) => <span className="text-xs font-mono text-slate-600">{row.original.oldValue || "—"}</span>,
+    },
+    {
+      accessorKey: "newValue",
+      header: "New Value",
+      cell: ({ row }) => <span className="text-xs font-mono text-slate-600">{row.original.newValue || "—"}</span>,
+    },
+    {
       accessorKey: "metadata",
       header: "Details",
       cell: ({ row }) => {
@@ -86,9 +101,9 @@ export function AuditClient({ logs }: { logs: any[] }) {
   })
 
   const handleExportCSV = () => {
-    const headers = "Timestamp,User,Action,Entity,Metadata\n"
+    const headers = "Timestamp,User,Action,Entity,Entity ID,Old Value,New Value,Metadata\n"
     const rows = logs.map(l => 
-      `"${l.createdAt}","${l.userName}","${l.action}","${l.entity}","${JSON.stringify(l.metadata).replace(/"/g, '""')}"`
+      `"${l.createdAt}","${l.userName}","${l.action}","${l.entity}","${l.entityId || ""}","${l.oldValue || ""}","${l.newValue || ""}","${JSON.stringify(l.metadata).replace(/"/g, '""')}"`
     ).join("\n")
     const blob = new Blob([headers + rows], { type: 'text/csv' })
     const url = window.window.URL.createObjectURL(blob)

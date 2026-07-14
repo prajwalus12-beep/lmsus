@@ -1,6 +1,7 @@
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { getServerSession } from '@/lib/supabaseServer'
 import { redirect } from 'next/navigation'
 import { AuditClient } from './AuditClient'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 export default async function AuditPage() {
   const session = await getServerSession()
@@ -10,9 +11,7 @@ export default async function AuditPage() {
     redirect('/')
   }
 
-  const supabase = await getSupabaseServer()
-
-  const { data: logs, error } = await supabase
+  const { data: logs, error } = await supabaseAdmin
     .from('audit_logs')
     .select('*, profiles(name, role, status)')
     .order('created_at', { ascending: false })

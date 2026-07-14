@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
     const { data: users, error } = await supabase
       .from('profiles')
       .select('id')
-      .neq('role', 'ADMIN')
       .in('status', ['ACTIVE', 'NOTICE_PERIOD'])
 
     if (error) throw new Error(error.message)
