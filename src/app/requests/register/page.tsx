@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { calculateRequestedDays } from '@/lib/leaveCalculator'
+import { LocalDateDisplay } from '@/components/LocalDateDisplay'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,10 +96,10 @@ export default async function LeaveRegisterPage() {
                   </TableCell>
                   <TableCell>{row.duration} days</TableCell>
                   <TableCell className="text-sm">
-                    {row.startDate.toLocaleDateString()} - {row.endDate.toLocaleDateString()}
+                    <LocalDateDisplay date={row.startDate} includeTime={false} /> - <LocalDateDisplay date={row.endDate} includeTime={false} />
                   </TableCell>
                   <TableCell className="text-sm text-slate-500">
-                    {row.appliedAt.toLocaleString()}
+                    <LocalDateDisplay date={row.appliedAt} />
                   </TableCell>
                   <TableCell>
                     <Badge variant={row.status === 'HR_APPROVED' ? 'default' : (row.status === 'REJECTED' ? 'destructive' : 'secondary')}>
@@ -106,7 +107,7 @@ export default async function LeaveRegisterPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-slate-500">
-                    {row.approvedAt ? row.approvedAt.toLocaleString() : '—'}
+                    <LocalDateDisplay date={row.approvedAt} />
                   </TableCell>
                   <TableCell className="text-sm">{row.approvedByName}</TableCell>
                 </TableRow>

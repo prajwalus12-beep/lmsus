@@ -4,6 +4,7 @@ import { getSupabaseServer, getServerSession } from "@/lib/supabaseServer"
 import { supabaseAdmin } from "@/lib/supabaseAdmin"
 import { revalidatePath } from "next/cache"
 import { sendEmail } from "@/lib/email"
+import { getSystemDateTime } from "@/lib/systemDate"
 
 export type CsvEmployeeRow = {
   name: string
@@ -68,7 +69,7 @@ export async function importEmployees(rows: CsvEmployeeRow[]) {
     const userId = authData.user.id
 
     // 3. Update the profile record (created by trigger)
-    const joinDateObj = row.joinDate ? new Date(row.joinDate) : new Date()
+    const joinDateObj = row.joinDate ? new Date(row.joinDate) : (await getSystemDateTime())
     const probationEndDate = new Date(joinDateObj)
     probationEndDate.setMonth(probationEndDate.getMonth() + probationMonths)
 
@@ -186,7 +187,7 @@ export async function updateEmployee(
       status: data.status,
       last_working_day: data.lastWorkingDay ? new Date(data.lastWorkingDay).toISOString() : null,
       probation_end_date: data.probationEndDate ? new Date(data.probationEndDate).toISOString() : null,
-      updated_at: new Date().toISOString()
+      updated_at: (await getSystemDateTime()).toISOString()
     })
     .eq('id', id)
 
@@ -222,7 +223,7 @@ export async function saveProratedBalances(
       sl: balances.sl,
       opening_pl: balances.pl,
       opening_cl: balances.cl,
-      updated_at: new Date().toISOString()
+      updated_at: (await getSystemDateTime()).toISOString()
     })
     .eq('id', latestBalance.id)
 
@@ -241,7 +242,8 @@ export async function saveProratedBalances(
         pl: balances.pl,
         cl: balances.cl,
         sl: balances.sl,
-      })
+      }),
+      created_at: (await getSystemDateTime()).toISOString()
     })
 
   if (auditError) console.error("Error creating audit log:", auditError)

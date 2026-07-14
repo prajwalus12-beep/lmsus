@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { sendEmail } from "@/lib/email"
 import { calculateRequestedDays } from "@/lib/leaveCalculator"
 import { syncUserLedger } from "@/lib/ledgerSync"
+import { getSystemDateTime } from "@/lib/systemDate"
 
 export async function approveRequest(id: string) {
   const session = await getServerSession()
@@ -41,7 +42,7 @@ export async function approveRequest(id: string) {
     .update({ 
       status,
       approved_by_id: approverId,
-      approved_at: new Date().toISOString()
+      approved_at: (await getSystemDateTime()).toISOString()
     })
     .eq('id', id)
     .select('*, profiles!leave_requests_user_id_fkey(*)')
@@ -241,7 +242,8 @@ export async function rejectRequest(id: string) {
     .from('leave_requests')
     .update({ 
       status: "REJECTED",
-      approved_by_id: session.user.id
+      approved_by_id: session.user.id,
+      updated_at: (await getSystemDateTime()).toISOString()
     })
     .eq('id', id)
     .select('*, profiles!leave_requests_user_id_fkey(*)')
@@ -315,13 +317,14 @@ export async function approveCompOff(id: string) {
   if (!session) throw new Error("Unauthorized")
   const approverId = session.user.id
 
+  const systemDateTime = await getSystemDateTime()
   const { data: entry, error: entryError } = await supabaseAdmin
     .from('comp_off_work_entries')
     .update({ 
       status: "APPROVED",
-      expiry_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+      expiry_date: new Date(systemDateTime.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString(),
       approved_by_id: approverId,
-      approved_at: new Date().toISOString()
+      approved_at: systemDateTime.toISOString()
     })
     .eq('id', id)
     .select('*')
@@ -420,7 +423,10 @@ export async function rejectCompOff(id: string) {
 
   const { data: entry, error: updateError } = await supabaseAdmin
     .from('comp_off_work_entries')
-    .update({ status: "REJECTED" })
+    .update({ 
+      status: "REJECTED",
+      updated_at: (await getSystemDateTime()).toISOString()
+    })
     .eq('id', id)
     .select('*')
     .single()

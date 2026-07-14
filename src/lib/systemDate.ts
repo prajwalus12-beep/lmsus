@@ -26,6 +26,41 @@ export async function getSystemDate(): Promise<Date> {
 }
 
 /**
+ * Returns the current system date and time.
+ * In normal mode, returns the current real-world date and time.
+ * In test mode, returns the simulated date combined with the current real-world time.
+ */
+export async function getSystemDateTime(): Promise<Date> {
+  try {
+    const supabase = await getSupabaseServer()
+    const { data: override } = await supabase
+      .from('system_date_overrides')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (override && override.is_test_mode && override.override_date) {
+      const simDate = new Date(override.override_date)
+      const realNow = new Date()
+      return new Date(
+        simDate.getFullYear(),
+        simDate.getMonth(),
+        simDate.getDate(),
+        realNow.getHours(),
+        realNow.getMinutes(),
+        realNow.getSeconds(),
+        realNow.getMilliseconds()
+      )
+    }
+  } catch (error) {
+    console.error('Error fetching system date override:', error)
+  }
+
+  return new Date()
+}
+
+/**
  * Sets the system date override.
  */
 export async function setSystemDateOverride(date: Date | null, userId: string, userName: string) {

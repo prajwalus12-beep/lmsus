@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
-import { getSystemDate } from '@/lib/systemDate'
+import { getSystemDate, getSystemDateTime } from '@/lib/systemDate'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       const expiredPl = Math.max(0, currentPl - MAX_PL_CARRY_FORWARD)
 
       // 3. Record Carry Forward History (Rule 47)
+      const sysDateTimeStr = (await getSystemDateTime()).toISOString()
       carryForwardHistoryInserts.push({
         user_id: balance.user_id,
         from_year: year,
@@ -68,7 +69,8 @@ export async function POST(req: NextRequest) {
         carry_forward_days: carryForwardPl,
         expired_days: expiredPl,
         max_carry_limit: MAX_PL_CARRY_FORWARD,
-        processed_by: sessionUser.id
+        processed_by: sessionUser.id,
+        processed_at: sysDateTimeStr
       })
 
       // 4. Create the new LeaveBalance for the new year
@@ -89,7 +91,7 @@ export async function POST(req: NextRequest) {
           cl_used: 0,
           sl_used: 0,
           pl_carry_forward: carryForwardPl,
-          updated_at: systemDate.toISOString()
+          updated_at: sysDateTimeStr
         })
 
       if (insertError) throw new Error(insertError.message)
@@ -111,7 +113,8 @@ export async function POST(req: NextRequest) {
           userId: balance.user_id,
           carriedForward: carryForwardPl,
           expired: expiredPl
-        })
+        }),
+        created_at: sysDateTimeStr
       })
     }
 
@@ -125,7 +128,7 @@ export async function POST(req: NextRequest) {
       if (logError) console.error("Error creating audit logs:", logError)
     }
 
-    // 6. Mark the year as closed
+    const sysDateTimeStr = (await getSystemDateTime()).toISOString()
     const { data: closure, error: closureError } = await supabase
       .from('leave_year_closures')
       .insert({
@@ -133,7 +136,9 @@ export async function POST(req: NextRequest) {
         closed_by: sessionUser.id,
         status: 'CLOSED',
         remarks: remarks ?? '',
-        carry_forward_processed: true
+        carry_forward_processed: true,
+        closed_at: sysDateTimeStr,
+        created_at: sysDateTimeStr
       })
       .select()
       .single()

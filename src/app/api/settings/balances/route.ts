@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
+import { getSystemDateTime } from '@/lib/systemDate'
 
 export async function PUT(req: NextRequest) {
   const session = await getServerSession()
@@ -21,7 +22,7 @@ export async function PUT(req: NextRequest) {
         opening_pl: openingPl,
         opening_cl: openingCl,
         opening_comp: openingComp,
-        updated_at: new Date().toISOString()
+        updated_at: (await getSystemDateTime()).toISOString()
       })
       .eq('user_id', userId)
       .select('*')
@@ -40,7 +41,8 @@ export async function PUT(req: NextRequest) {
         entity: 'LeaveBalance',
         entity_id: updatedBalance.id,
         new_value: JSON.stringify({ openingPl, openingCl, openingComp }),
-        metadata: `HR adjusted opening balances for user ${userId}`
+        metadata: `HR adjusted opening balances for user ${userId}`,
+        created_at: (await getSystemDateTime()).toISOString()
       })
 
     if (auditError) console.error("Error creating audit log:", auditError)

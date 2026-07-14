@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { getSystemDateTime } from '@/lib/systemDate'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -32,7 +33,8 @@ export async function POST(req: NextRequest) {
         reason,
         effective_year: parseInt(effectiveYear),
         entered_by: sessionUser.id,
-        entered_by_name: sessionUser.name
+        entered_by_name: sessionUser.name,
+        created_at: (await getSystemDateTime()).toISOString()
       })
       .select('*')
       .single()
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
       .from('leave_balances')
       .update({
         [typeKey]: currentVal + parseFloat(amount),
-        updated_at: new Date().toISOString()
+        updated_at: (await getSystemDateTime()).toISOString()
       })
       .eq('user_id', userId)
       .eq('year', yearInt)
@@ -77,7 +79,8 @@ export async function POST(req: NextRequest) {
           entity_id: adjustment.id,
           new_value: String(currentVal + parseFloat(amount)),
           old_value: String(currentVal),
-          metadata: JSON.stringify({ targetUserId: userId, leaveType, amount, reason })
+          metadata: JSON.stringify({ targetUserId: userId, leaveType, amount, reason }),
+          created_at: (await getSystemDateTime()).toISOString()
         })
 
       if (logError) console.error("Error creating adjustment audit log:", logError)

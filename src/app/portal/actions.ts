@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin"
 import { revalidatePath } from "next/cache"
 import { calculateRequestedDays } from "@/lib/leaveCalculator"
 import { sendEmail } from "@/lib/email"
-import { getSystemDate } from "@/lib/systemDate"
+import { getSystemDate, getSystemDateTime } from "@/lib/systemDate"
 
 function validateAttachmentUrl(url: string): boolean {
   try {
@@ -390,6 +390,7 @@ export async function submitLeaveRequest(data: {
             negative_amount: Math.abs(currentBalance - paidDays < 0 ? currentBalance - paidDays : 0),
             attachment_url: attachmentUrl || null,
             year: leaveYear,
+            created_at: (await getSystemDateTime()).toISOString(),
           })
           .select()
           .single()
@@ -413,6 +414,7 @@ export async function submitLeaveRequest(data: {
             negative_amount: 0,
             attachment_url: attachmentUrl || null,
             year: leaveYear,
+            created_at: (await getSystemDateTime()).toISOString(),
           })
           .select()
           .single()
@@ -425,7 +427,8 @@ export async function submitLeaveRequest(data: {
           action: 'LEAVE_APPLIED_SPLIT',
           entity: 'LeaveRequest',
           entity_id: paidRequest.id,
-          metadata: JSON.stringify({ originalType: type, paidDays, lopDays: unpaidDays, paidRequestId: paidRequest.id, lopRequestId: unpaidRequest.id })
+          metadata: JSON.stringify({ originalType: type, paidDays, lopDays: unpaidDays, paidRequestId: paidRequest.id, lopRequestId: unpaidRequest.id }),
+          created_at: (await getSystemDateTime()).toISOString()
         })
 
         revalidatePath("/portal")
@@ -474,6 +477,7 @@ export async function submitLeaveRequest(data: {
       negative_amount: negativeAmount,
       attachment_url: attachmentUrl || null,
       year: leaveYear,
+      created_at: (await getSystemDateTime()).toISOString(),
     })
     .select()
     .single()
@@ -489,7 +493,8 @@ export async function submitLeaveRequest(data: {
     action: 'LEAVE_APPLIED',
     entity: 'LeaveRequest',
     entity_id: request.id,
-    metadata: JSON.stringify({ type, startDate, endDate, days, isNegative, attachmentUrl })
+    metadata: JSON.stringify({ type, startDate, endDate, days, isNegative, attachmentUrl }),
+    created_at: (await getSystemDateTime()).toISOString()
   })
 
   // Fetch HR and Managers for notification (using supabaseAdmin to bypass RLS)
@@ -664,7 +669,8 @@ export async function submitCompOffWork(data: {
       hours_worked: hoursWorked,
       reason,
       days_credited: daysCredited,
-      status: "PENDING"
+      status: "PENDING",
+      created_at: (await getSystemDateTime()).toISOString(),
     })
     .select()
     .single()
@@ -680,7 +686,8 @@ export async function submitCompOffWork(data: {
     action: 'COMPOFF_WORK_LOGGED',
     entity: 'CompOffWorkEntry',
     entity_id: entry.id,
-    metadata: JSON.stringify({ dateWorked, hoursWorked, daysCredited })
+    metadata: JSON.stringify({ dateWorked, hoursWorked, daysCredited }),
+    created_at: (await getSystemDateTime()).toISOString()
   })
 
   // Fetch HR and Managers for notification
