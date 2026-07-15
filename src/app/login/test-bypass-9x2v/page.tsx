@@ -7,9 +7,52 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { Eye, EyeOff, Loader2, LogIn } from "lucide-react"
+import { Eye, EyeOff, Loader2, Users, LogIn } from "lucide-react"
 
-export default function LoginPage() {
+const TEST_ACCOUNTS = [
+  {
+    name: "Priya Sharma",
+    email: "admin@yopmail.com",
+    role: "HR Admin",
+    dept: "HR",
+    color: "bg-purple-100 text-purple-700 border-purple-200",
+    dot: "bg-purple-500",
+  },
+  {
+    name: "Rahul Verma",
+    email: "manager@yopmail.com",
+    role: "Manager",
+    dept: "Engineering",
+    color: "bg-blue-100 text-blue-700 border-blue-200",
+    dot: "bg-blue-500",
+  },
+  {
+    name: "John Doe",
+    email: "john@yopmail.com",
+    role: "Employee",
+    dept: "Engineering",
+    color: "bg-green-100 text-green-700 border-green-200",
+    dot: "bg-green-500",
+  },
+  {
+    name: "Jane Smith",
+    email: "jane@yopmail.com",
+    role: "Employee",
+    dept: "Sales",
+    color: "bg-amber-100 text-amber-700 border-amber-200",
+    dot: "bg-amber-500",
+  },
+  {
+    name: "Amit Kumar",
+    email: "amit@yopmail.com",
+    role: "Employee (Notice)",
+    dept: "Finance",
+    color: "bg-red-100 text-red-700 border-red-200",
+    dot: "bg-red-500",
+  },
+]
+
+export default function TestingLoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -42,6 +85,12 @@ export default function LoginPage() {
       }
       toast.error(msg)
     }
+  }
+
+  const fillAccount = (acc: typeof TEST_ACCOUNTS[0]) => {
+    setEmail(acc.email)
+    setPassword("Unique@123")
+    toast.info(`Filled: ${acc.name}`)
   }
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -118,7 +167,7 @@ export default function LoginPage() {
 
       {/* ── Right Login Panel ── */}
       <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-16 bg-[#F7F8FA] overflow-y-auto">
-        <div className="max-w-md w-full mx-auto">
+        <div className="max-w-md w-full mx-auto my-8">
 
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-8 lg:hidden">
@@ -129,7 +178,7 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-1">Sign in to your account</h2>
+            <h2 className="text-2xl font-bold text-slate-900 mb-1">Sign in to your account (Testing Mode)</h2>
             <p className="text-slate-500 text-sm">Use your company email and password to continue.</p>
           </div>
 
@@ -192,7 +241,51 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="text-center text-xs text-slate-400 mt-6">
+          {/* Test Accounts Panel */}
+          <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm mb-8">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+              <Users className="w-4 h-4 text-indigo-500" />
+              <span className="text-sm font-semibold text-slate-700">Test Accounts</span>
+            </div>
+            {/* Password banner */}
+            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+              <span className="text-xs text-amber-700 font-medium">🔑 Common password for all accounts:</span>
+              <code className="text-sm font-bold text-amber-900 bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-300 tracking-wide select-all">
+                Unique@123
+              </code>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {TEST_ACCOUNTS.map((acc) => (
+                <button
+                  key={acc.email}
+                  type="button"
+                  onClick={() => fillAccount(acc)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left group"
+                >
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${acc.dot}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-800">{acc.name}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${acc.color}`}>
+                        {acc.role}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 truncate">{acc.email} · {acc.dept}</p>
+                  </div>
+                  <span className="text-xs text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    Fill ↗
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="px-4 py-2.5 bg-indigo-50 border-t border-indigo-100">
+              <p className="text-xs text-indigo-600">
+                💡 Click any account above to auto-fill the login form, then click Sign In.
+              </p>
+            </div>
+          </div>
+
+          <p className="text-center text-xs text-slate-400">
             LMS SaaS · Confidential · © {new Date().getFullYear()}
           </p>
         </div>

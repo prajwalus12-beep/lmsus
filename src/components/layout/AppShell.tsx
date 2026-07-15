@@ -9,7 +9,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isNavigating, setIsNavigating] = useState(false)
-  const isLoginPage = pathname === "/login"
+  const isLoginPage = pathname === "/login" || pathname?.startsWith("/login/")
 
   // Reset loading state on pathname change (navigation complete)
   useEffect(() => {
