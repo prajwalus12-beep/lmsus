@@ -20,16 +20,30 @@ export default async function OpeningBalancesPage() {
   }
 
   // Use supabaseAdmin to bypass RLS
-  const { data: users, error } = await supabaseAdmin
-    .from('profiles')
-    .select('*, departments(name), leave_balances(*)')
-    .neq('role', 'ADMIN')
-    .in('status', ['ACTIVE', 'NOTICE_PERIOD'])
-    .order('name', { ascending: true })
+  const [
+    { data: users, error },
+    { data: allDepts, error: deptError }
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('*, departments(name), leave_balances(*)')
+      .neq('role', 'ADMIN')
+      .in('status', ['ACTIVE', 'NOTICE_PERIOD'])
+      .order('name', { ascending: true }),
+    supabaseAdmin
+      .from('departments')
+      .select('name')
+      .order('name', { ascending: true })
+  ])
 
   if (error) {
     console.error("Error fetching users for balances:", error)
   }
+  if (deptError) {
+    console.error("Error fetching departments:", deptError)
+  }
+
+  const departments = (allDepts || []).map(d => d.name)
 
   const formattedUsers = (users || []).map((u: any) => {
     let balance = null
@@ -61,7 +75,7 @@ export default async function OpeningBalancesPage() {
         <p className="text-slate-500">View and edit employee opening leave balances for the current year.</p>
       </div>
       
-      <BalancesClient initialUsers={formattedUsers} />
+      <BalancesClient initialUsers={formattedUsers} departments={departments} />
     </div>
   )
 }

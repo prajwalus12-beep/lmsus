@@ -119,7 +119,7 @@ export function LedgerClient({
   year,
   showClBalance,
 }: Props) {
-  const isHR = role === "ADMIN"
+  const isHR = role === "ADMIN" || role === "MANAGER"
   const showClBalanceColumn = role !== "EMPLOYEE" || showClBalance
   const [entries, setEntries] = useState<LedgerEntry[]>(initialEntries)
   const [selectedUser, setSelectedUser] = useState<UserInfo>(initialUser)

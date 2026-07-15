@@ -16,10 +16,11 @@ export default async function TeamPage() {
   }
 
   // Use supabaseAdmin to ensure full visibility for HR/Managers
-  // Fetch users and balances separately and join them to be 100% safe
+  // Fetch users, balances, and departments separately
   const [
     { data: users, error: uError },
-    { data: allBalances, error: bError }
+    { data: allBalances, error: bError },
+    { data: allDepts, error: dError }
   ] = await Promise.all([
     supabaseAdmin
       .from('profiles')
@@ -29,11 +30,18 @@ export default async function TeamPage() {
     supabaseAdmin
       .from('leave_balances')
       .select('*')
-      .order('year', { ascending: false })
+      .order('year', { ascending: false }),
+    supabaseAdmin
+      .from('departments')
+      .select('name')
+      .order('name', { ascending: true })
   ])
 
   if (uError) console.error("Error fetching users:", uError)
   if (bError) console.error("Error fetching balances:", bError)
+  if (dError) console.error("Error fetching departments:", dError)
+
+  const departments = (allDepts || []).map(d => d.name)
 
   const balanceMap = new Map()
   if (allBalances) {
@@ -73,7 +81,7 @@ export default async function TeamPage() {
       </div>
       
       <div className="bg-white border rounded-xl shadow-sm">
-        <TeamDataTable columns={columns} data={formattedData} currentUserRole={session.user.role} />
+        <TeamDataTable columns={columns} data={formattedData} currentUserRole={session.user.role} departments={departments} />
       </div>
     </div>
   )

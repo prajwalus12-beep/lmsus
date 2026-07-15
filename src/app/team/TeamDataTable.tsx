@@ -28,17 +28,26 @@ import { toast } from "sonner"
 import { AddEmployeeDialog } from "./AddEmployeeDialog"
 import { FileDown, RefreshCw, Loader2, Upload } from "lucide-react"
 import { useRouter } from "next/navigation"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
   currentUserRole?: string
+  departments?: string[]
 }
 
 export function TeamDataTable<TData, TValue>({
   columns,
   data,
   currentUserRole,
+  departments = [],
 }: DataTableProps<TData, TValue>) {
   const isAdmin = currentUserRole === 'ADMIN'
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -142,14 +151,34 @@ export function TeamDataTable<TData, TValue>({
   return (
     <div>
       <div className="flex items-center justify-between p-4 gap-4">
-        <Input
-          placeholder="Search by name..."
-          value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-          onChange={(event) =>
-            table.getColumn("name")?.setFilterValue(event.target.value)
-          }
-          className="max-w-sm"
-        />
+        <div className="flex items-center gap-2 flex-1 max-w-md">
+          <Input
+            placeholder="Search by name..."
+            value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+            onChange={(event) =>
+              table.getColumn("name")?.setFilterValue(event.target.value)
+            }
+            className="max-w-xs"
+          />
+          <Select
+            value={(table.getColumn("department")?.getFilterValue() as string) || "ALL"}
+            onValueChange={(val) =>
+              table.getColumn("department")?.setFilterValue(val === "ALL" ? "" : val)
+            }
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Departments</SelectItem>
+              {departments?.map((dept) => (
+                <SelectItem key={dept} value={dept}>
+                  {dept}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex items-center gap-2">
           <input 
             type="file" 

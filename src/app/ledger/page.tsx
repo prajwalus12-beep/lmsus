@@ -15,7 +15,7 @@ export default async function LedgerPage() {
   const role: string = sessionUser.role
   const userId: string = sessionUser.id
   const year = new Date().getFullYear()
-  const isHR = role === 'ADMIN'
+  const isHR = role === 'ADMIN' || role === 'MANAGER'
 
   const supabase = await getSupabaseServer()
 

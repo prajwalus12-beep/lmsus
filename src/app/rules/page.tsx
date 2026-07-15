@@ -18,6 +18,21 @@ export default async function LeaveRulesPage() {
   const session = await getServerSession();
   if (!session?.user) redirect("/login");
 
+  const sessionUser = session.user as any;
+  if (sessionUser.role === 'EMPLOYEE') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] max-w-md mx-auto px-4 text-center">
+        <div className="bg-red-50 p-4 rounded-full text-red-600 mb-4 border border-red-100 shadow-sm animate-pulse">
+          <ShieldAlert className="w-12 h-12" />
+        </div>
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Access Denied</h1>
+        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+          You do not have permission to view the system leave rules and policies. Please contact your HR Administrator or Manager if you require assistance.
+        </p>
+      </div>
+    );
+  }
+
   const supabase = await getSupabaseServer();
   const { data: configs } = await supabase.from('system_configs').select('*');
   const configMap = Object.fromEntries((configs || []).map((c: any) => [c.key, c.value]));

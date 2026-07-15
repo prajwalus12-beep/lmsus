@@ -1,11 +1,8 @@
 import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { redirect } from 'next/navigation'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import { calculateRequestedDays } from '@/lib/leaveCalculator'
-import { LocalDateDisplay } from '@/components/LocalDateDisplay'
+import { RegisterClient } from './RegisterClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +11,7 @@ export default async function LeaveRegisterPage() {
   if (!session?.user) redirect('/login')
 
   const sessionUser = session.user as any
+  const isAdmin = sessionUser.role === 'ADMIN' || sessionUser.role === 'MANAGER'
   
   // Use supabaseAdmin to bypass RLS
   let query = supabaseAdmin
@@ -21,13 +19,23 @@ export default async function LeaveRegisterPage() {
     .select('*, profiles!leave_requests_user_id_fkey(name, departments(name)), approved_by:profiles!leave_requests_approved_by_id_fkey(name)')
     .order('created_at', { ascending: false })
 
-  if (sessionUser.role !== 'ADMIN') {
+  if (sessionUser.role !== 'ADMIN' && sessionUser.role !== 'MANAGER') {
     query = query.eq('user_id', sessionUser.id)
   }
 
-  const { data: requests, error } = await query
+  const [
+    { data: requests, error },
+    { data: allDepts, error: deptError }
+  ] = await Promise.all([
+    query,
+    supabaseAdmin.from('departments').select('name').order('name')
+  ])
+
   if (error) {
     console.error("Error fetching leave requests:", error)
+  }
+  if (deptError) {
+    console.error("Error fetching departments:", deptError)
   }
 
   // Fetch holidays and config once for duration calculation
@@ -35,7 +43,6 @@ export default async function LeaveRegisterPage() {
   const holidayDates = new Set((holidays || []).map((h: any) => h.date.split('T')[0]))
   const { data: config } = await supabaseAdmin.from('system_configs').select('value').eq('key', 'weekend_sandwich_rule').maybeSingle()
   const isSandwichEnabled = config?.value === 'true'
-
 
   const formattedData = (requests || []).map((req: any) => {
     const { days, effectiveType } = calculateRequestedDays(
@@ -51,16 +58,18 @@ export default async function LeaveRegisterPage() {
       id: req.id,
       employeeName: req.profiles?.name || 'Unknown',
       department: req.profiles?.departments?.name || 'N/A',
-      type: effectiveType, // Use effective type
-      startDate: new Date(req.start_date),
-      endDate: new Date(req.end_date),
+      type: effectiveType,
+      startDate: req.start_date,
+      endDate: req.end_date,
       duration: days,
-      appliedAt: new Date(req.created_at),
+      appliedAt: req.created_at,
       status: req.status,
-      approvedAt: req.approved_at ? new Date(req.approved_at) : null,
+      approvedAt: req.approved_at || null,
       approvedByName: req.approved_by?.name || '—'
     }
   })
+
+  const departments = (allDepts || []).map((d: any) => d.name)
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -69,60 +78,7 @@ export default async function LeaveRegisterPage() {
         <p className="text-slate-500">Comprehensive log of all leave applications and their status.</p>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Dates</TableHead>
-                <TableHead>Applied On</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Approved At</TableHead>
-                <TableHead>Approver</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {formattedData.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <div className="font-medium">{row.employeeName}</div>
-                    <div className="text-xs text-slate-400">{row.department}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{row.type}</Badge>
-                  </TableCell>
-                  <TableCell>{row.duration} days</TableCell>
-                  <TableCell className="text-sm">
-                    <LocalDateDisplay date={row.startDate} includeTime={false} /> - <LocalDateDisplay date={row.endDate} includeTime={false} />
-                  </TableCell>
-                  <TableCell className="text-sm text-slate-500">
-                    <LocalDateDisplay date={row.appliedAt} />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={row.status === 'HR_APPROVED' ? 'default' : (row.status === 'REJECTED' ? 'destructive' : 'secondary')}>
-                      {row.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-slate-500">
-                    <LocalDateDisplay date={row.approvedAt} />
-                  </TableCell>
-                  <TableCell className="text-sm">{row.approvedByName}</TableCell>
-                </TableRow>
-              ))}
-              {formattedData.length === 0 && (
-                 <TableRow>
-                   <TableCell colSpan={8} className="text-center py-12 text-slate-500 italic">
-                     No records found in the leave register.
-                   </TableCell>
-                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <RegisterClient initialRequests={formattedData} departments={departments} isAdmin={isAdmin} />
     </div>
   )
 }

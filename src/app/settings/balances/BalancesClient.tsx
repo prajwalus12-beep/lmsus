@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Edit2, Check, X, Loader2, Save } from "lucide-react"
 import { toast } from "sonner"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type UserBalance = {
   id: string
@@ -20,11 +27,13 @@ type UserBalance = {
   currentCl: number
 }
 
-export function BalancesClient({ initialUsers }: { initialUsers: UserBalance[] }) {
+export function BalancesClient({ initialUsers, departments = [] }: { initialUsers: UserBalance[], departments?: string[] }) {
   const [users, setUsers] = useState(initialUsers)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Partial<UserBalance>>({})
   const [saving, setSaving] = useState(false)
+  const [selectedDept, setSelectedDept] = useState("ALL")
+  const [searchQuery, setSearchQuery] = useState("")
 
   const handleEdit = (user: UserBalance) => {
     setEditingId(user.id)
@@ -60,8 +69,39 @@ export function BalancesClient({ initialUsers }: { initialUsers: UserBalance[] }
     }
   }
 
+  const filteredUsers = users.filter(user => {
+    const matchesDept = selectedDept === "ALL" || user.department === selectedDept
+    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          user.email.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchesDept && matchesSearch
+  })
+
   return (
     <Card>
+      <div className="flex items-center gap-2 p-4 border-b max-w-md">
+        <Input
+          placeholder="Search by name..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="max-w-xs"
+        />
+        <Select
+          value={selectedDept}
+          onValueChange={setSelectedDept}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All Departments" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All Departments</SelectItem>
+            {departments?.map((dept) => (
+              <SelectItem key={dept} value={dept}>
+                {dept}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <CardContent className="p-0">
         <Table>
           <TableHeader className="bg-slate-50">
@@ -76,11 +116,12 @@ export function BalancesClient({ initialUsers }: { initialUsers: UserBalance[] }
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map((user) => (
+            {filteredUsers.map((user) => (
               <TableRow key={user.id}>
                 <TableCell>
                   <div className="font-medium">{user.name}</div>
                   <div className="text-xs text-slate-400">{user.email}</div>
+                  <div className="text-[10px] text-slate-500 font-medium uppercase mt-0.5">{user.department}</div>
                 </TableCell>
                 <TableCell>
                   {editingId === user.id ? (
@@ -132,6 +173,13 @@ export function BalancesClient({ initialUsers }: { initialUsers: UserBalance[] }
                 </TableCell>
               </TableRow>
             ))}
+            {filteredUsers.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8 text-slate-500 italic">
+                  No records found.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>

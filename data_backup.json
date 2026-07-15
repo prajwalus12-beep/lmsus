@@ -23,6 +23,24 @@
       "name": "Finance",
       "createdAt": "2026-05-16T06:09:07.531Z",
       "updatedAt": "2026-05-16T06:09:07.531Z"
+    },
+    {
+      "id": "e010f404-12ff-442e-b2e9-a1b2fc07864a",
+      "name": "Pune-IT",
+      "createdAt": "2026-07-15T12:20:58.000Z",
+      "updatedAt": "2026-07-15T12:20:58.000Z"
+    },
+    {
+      "id": "7c2a9cdc-3280-4acb-917b-093490f3e3e0",
+      "name": "Mumbai",
+      "createdAt": "2026-07-15T12:20:58.000Z",
+      "updatedAt": "2026-07-15T12:20:58.000Z"
+    },
+    {
+      "id": "5f6ecd98-8fe1-4399-9bce-ae55f1aa0d83",
+      "name": "Demo",
+      "createdAt": "2026-07-15T12:20:58.000Z",
+      "updatedAt": "2026-07-15T12:20:58.000Z"
     }
   ],
   "users": [
