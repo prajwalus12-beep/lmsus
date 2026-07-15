@@ -21,11 +21,14 @@ export async function approveRequest(id: string) {
   // Prevent overriding finalized requests
   const { data: currentReq } = await supabaseAdmin
     .from('leave_requests')
-    .select('status')
+    .select('status, user_id')
     .eq('id', id)
     .single()
 
   if (!currentReq) throw new Error("Leave request not found")
+  if (currentReq.user_id === approverId) {
+    throw new Error("Cannot approve your own leave request.")
+  }
   if (currentReq.status === "HR_APPROVED") {
     throw new Error("Cannot approve: Leave request is already HR Approved.")
   }
@@ -226,11 +229,14 @@ export async function rejectRequest(id: string) {
   // Prevent overriding finalized requests
   const { data: currentReq } = await supabaseAdmin
     .from('leave_requests')
-    .select('status')
+    .select('status, user_id')
     .eq('id', id)
     .single()
 
   if (!currentReq) throw new Error("Leave request not found")
+  if (currentReq.user_id === session.user.id) {
+    throw new Error("Cannot reject your own leave request.")
+  }
   if (currentReq.status === "HR_APPROVED") {
     throw new Error("Cannot reject: Leave request is already HR Approved.")
   }
@@ -316,6 +322,17 @@ export async function approveCompOff(id: string) {
   const session = await getServerSession()
   if (!session) throw new Error("Unauthorized")
   const approverId = session.user.id
+
+  const { data: currentEntry } = await supabaseAdmin
+    .from('comp_off_work_entries')
+    .select('user_id')
+    .eq('id', id)
+    .single()
+
+  if (!currentEntry) throw new Error("Comp-off entry not found")
+  if (currentEntry.user_id === approverId) {
+    throw new Error("Cannot approve your own comp-off work log.")
+  }
 
   const systemDateTime = await getSystemDateTime()
   const { data: entry, error: entryError } = await supabaseAdmin
@@ -419,7 +436,19 @@ export async function approveCompOff(id: string) {
 export async function rejectCompOff(id: string) {
   const session = await getServerSession()
   if (!session) throw new Error("Unauthorized")
+  const approverId = session.user.id
   const approverName = session.user.name || 'HR Administrator'
+
+  const { data: currentEntry } = await supabaseAdmin
+    .from('comp_off_work_entries')
+    .select('user_id')
+    .eq('id', id)
+    .single()
+
+  if (!currentEntry) throw new Error("Comp-off entry not found")
+  if (currentEntry.user_id === approverId) {
+    throw new Error("Cannot reject your own comp-off work log.")
+  }
 
   const { data: entry, error: updateError } = await supabaseAdmin
     .from('comp_off_work_entries')

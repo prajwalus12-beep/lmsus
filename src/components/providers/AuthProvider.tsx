@@ -110,7 +110,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // scope: 'global' revokes the server-side refresh token immediately.
     // Without this, the middleware's auth.getUser() still validates the JWT
     // until it expires (~1 hour), making logout ineffective.
-    await supabase.auth.signOut({ scope: 'global' })
+    try {
+      await supabase.auth.signOut({ scope: 'global' })
+    } catch (err) {
+      console.error("SignOut network/fetch error (proceeding with local sign-out):", err)
+    }
     setSession(null)
     setStatus("unauthenticated")
     router.push("/login")

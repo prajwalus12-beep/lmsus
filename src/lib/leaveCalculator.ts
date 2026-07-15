@@ -10,7 +10,7 @@ export function calculateRequestedDays(
   leaveType: string,
   isHalfDay: boolean = false
 ) {
-  if (isHalfDay) return { days: 0.5, convertedToPl: false }
+  if (isHalfDay) return { days: 0.5, convertedToPl: false, effectiveType: leaveType }
 
   const start = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()))
   const end = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()))
