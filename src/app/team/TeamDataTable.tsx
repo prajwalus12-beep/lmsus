@@ -32,12 +32,15 @@ import { useRouter } from "next/navigation"
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
+  currentUserRole?: string
 }
 
 export function TeamDataTable<TData, TValue>({
   columns,
   data,
+  currentUserRole,
 }: DataTableProps<TData, TValue>) {
+  const isAdmin = currentUserRole === 'ADMIN'
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [isImporting, setIsImporting] = React.useState(false)
@@ -131,6 +134,9 @@ export function TeamDataTable<TData, TValue>({
       sorting,
       columnFilters,
     },
+    meta: {
+      currentUserRole,
+    },
   })
 
   return (
@@ -153,17 +159,21 @@ export function TeamDataTable<TData, TValue>({
             onChange={handleImportCsv}
             disabled={isImporting}
           />
-          <Button variant="outline" onClick={handleDownloadTemplate} size="sm">
-            <FileDown className="w-4 h-4 mr-2" /> Template
-          </Button>
+          {isAdmin && (
+            <Button variant="outline" onClick={handleDownloadTemplate} size="sm">
+              <FileDown className="w-4 h-4 mr-2" /> Template
+            </Button>
+          )}
           <Button variant="outline" onClick={handleExportCsv} size="sm">
             <FileDown className="w-4 h-4 mr-2 text-indigo-600" /> Export CSV
           </Button>
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()} size="sm" disabled={isImporting}>
-            {isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-            Import CSV
-          </Button>
-          <AddEmployeeDialog onRefresh={handleRefresh} />
+          {isAdmin && (
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()} size="sm" disabled={isImporting}>
+              {isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+              Import CSV
+            </Button>
+          )}
+          {isAdmin && <AddEmployeeDialog onRefresh={handleRefresh} />}
         </div>
       </div>
       <div className="rounded-md border-t">

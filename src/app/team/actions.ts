@@ -255,7 +255,7 @@ export async function saveProratedBalances(
 export async function deleteEmployee(userId: string) {
   const session = await getServerSession()
   if (!session || (session.user as any).role !== 'ADMIN') {
-    throw new Error("Unauthorized")
+    return { success: false, error: "Unauthorized: Only administrators can delete employees." }
   }
 
   // 1. Nullify approved_by_id references to prevent foreign key errors

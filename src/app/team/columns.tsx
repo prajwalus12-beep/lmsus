@@ -26,11 +26,18 @@ export type TeamRow = {
   probationEndDate?: string | null
 }
 
-const ActionCell = ({ row }: { row: any }) => {
+const ActionCell = ({ row, table }: { row: any; table: any }) => {
   const user = row.original
   const [editOpen, setEditOpen] = useState(false)
   const [prorateOpen, setProrateOpen] = useState(false)
   const router = useRouter()
+
+  const meta = table?.options?.meta as any
+  const isAdmin = meta?.currentUserRole === 'ADMIN'
+
+  if (!isAdmin) {
+    return <span className="text-slate-400 text-xs">—</span>
+  }
 
   return (
     <div className="flex items-center gap-1">
@@ -58,7 +65,12 @@ const ActionCell = ({ row }: { row: any }) => {
         className="h-8 w-8 text-slate-400 hover:text-red-600"
         onClick={async () => {
            if(confirm(`Are you sure you want to delete ${user.name}?`)) {
-             const promise = deleteEmployee(user.id);
+             const promise = deleteEmployee(user.id).then(res => {
+               if (res && 'success' in res && !res.success) {
+                 throw new Error(res.error || 'Failed to delete');
+               }
+               return res;
+             });
              toast.promise(promise, {
                loading: 'Deleting employee...',
                success: () => 'Employee deleted successfully',
@@ -189,6 +201,6 @@ export const columns: ColumnDef<TeamRow>[] = [
   {
     id: "actions",
     header: () => <span className="text-xs font-bold">Actions</span>,
-    cell: ({ row }) => <ActionCell row={row} />,
+    cell: ({ row, table }) => <ActionCell row={row} table={table} />,
   },
 ]

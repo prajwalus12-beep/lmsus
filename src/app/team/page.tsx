@@ -73,7 +73,7 @@ export default async function TeamPage() {
       </div>
       
       <div className="bg-white border rounded-xl shadow-sm">
-        <TeamDataTable columns={columns} data={formattedData} />
+        <TeamDataTable columns={columns} data={formattedData} currentUserRole={session.user.role} />
       </div>
     </div>
   )
