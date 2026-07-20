@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession, getSupabaseServer } from '@/lib/supabaseServer'
+import { getServerSession } from '@/lib/supabaseServer'
 import { setSystemDateOverride } from '@/lib/systemDate'
+import prisma from '@/lib/prisma'
 
 export async function GET() {
   try {
-    const supabase = await getSupabaseServer()
-    const { data: override } = await supabase
-      .from('system_date_overrides')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const override = await prisma.systemDateOverride.findFirst({
+      orderBy: { createdAt: 'desc' }
+    })
 
-    if (override && override.is_test_mode) {
+    if (override && override.isTestMode) {
       return NextResponse.json({
         isTestMode: true,
-        overrideDate: override.override_date
+        overrideDate: override.overrideDate ? override.overrideDate.toISOString() : null
       })
     }
   } catch (error) {
@@ -46,8 +43,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      isTestMode: result.is_test_mode, 
-      overrideDate: result.override_date 
+      isTestMode: result.isTestMode, 
+      overrideDate: result.overrideDate ? result.overrideDate.toISOString() : null 
     })
   } catch (error: any) {
     console.error('Test Mode Error:', error)

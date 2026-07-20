@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getSupabaseServer } from "@/lib/supabaseServer"
+import prisma from "@/lib/prisma"
 import { calculateRequestedDays } from "@/lib/leaveCalculator"
 
 export async function POST(request: Request) {
@@ -11,26 +11,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const supabase = await getSupabaseServer()
     const start = new Date(startDate)
     const end = new Date(endDate)
     if (start > end) {
       return NextResponse.json({ error: "Start date cannot be after end date." }, { status: 400 })
     }
 
-    const yearStart = `${start.getFullYear()}-01-01`
-    const yearEnd = `${start.getFullYear()}-12-31`
+    const yearStart = new Date(Date.UTC(start.getFullYear(), 0, 1))
+    const yearEnd = new Date(Date.UTC(start.getFullYear(), 11, 31, 23, 59, 59, 999))
 
-    // 1. Fetch holidays and config in parallel
-    const [{ data: holidays }, { data: sandwichConfig }] = await Promise.all([
-      supabase.from('holidays').select('*').gte('date', yearStart).lte('date', yearEnd),
-      supabase.from('system_configs').select('value').eq('key', 'weekend_sandwich_rule').single()
+    // 1. Fetch holidays and config in parallel using Prisma
+    const [holidays, sandwichConfig] = await Promise.all([
+      prisma.holiday.findMany({
+        where: {
+          date: {
+            gte: yearStart,
+            lte: yearEnd
+          }
+        }
+      }),
+      prisma.systemConfig.findUnique({ where: { key: 'weekend_sandwich_rule' } })
     ]);
 
-    const holidayDates = new Set((holidays || []).map((h: any) => h.date.split('T')[0]))
+    const holidayDates = new Set((holidays || []).map((h: any) => h.date.toISOString().split('T')[0]))
     const isSandwichEnabled = sandwichConfig?.value === "true"
 
-    // 2. Calculate days (Now FAST synchronous)
+    // 2. Calculate days for current request
     const { days, convertedToPl } = calculateRequestedDays(
       start, 
       end, 
@@ -40,22 +46,56 @@ export async function POST(request: Request) {
       isHalfDay
     )
 
-    // 3. Simple projection (Monthly PL accrual)
-    const { data: balance } = await supabase
-      .from('leave_balances')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+    // 3. Fetch balance, pending leaves, and accrual rate
+    const [balance, pendingLeaves, rateConfig] = await Promise.all([
+      prisma.leaveBalance.findFirst({
+        where: {
+          userId,
+          year: start.getFullYear()
+        }
+      }),
+      prisma.leaveRequest.findMany({
+        where: {
+          userId,
+          status: { in: ['PENDING', 'L1_APPROVED'] },
+          startDate: { gte: yearStart },
+          endDate: { lte: yearEnd }
+        }
+      }),
+      prisma.systemConfig.findUnique({ where: { key: 'ACCRUAL_RATE_PL' } })
+    ])
 
-    let projectedPl = balance?.pl || 0
+    // Calculate pending days per type
+    let pendingPl = 0
+    let pendingCl = 0
+    let pendingComp = 0
+
+    for (const req of pendingLeaves) {
+      const { days: pDays, effectiveType } = calculateRequestedDays(
+        new Date(req.startDate),
+        new Date(req.endDate),
+        holidayDates,
+        isSandwichEnabled,
+        req.type,
+        req.halfDay !== 'NONE'
+      )
+      const rawType = (effectiveType || req.type).toUpperCase()
+      if (rawType === 'PL') {
+        pendingPl += pDays
+      } else if (rawType === 'CL' || rawType === 'SL') {
+        pendingCl += pDays
+      } else if (rawType === 'COMP') {
+        pendingComp += pDays
+      }
+    }
+
+    const basePl = (balance?.pl || 0) - pendingPl
+    const baseCl = (balance?.cl || 0) - pendingCl
+    const baseComp = (balance?.comp || 0) - pendingComp
+
+    let projectedPl = basePl
     
     // Monthly accrual logic (Simplified for projection)
-    const { data: rateConfig } = await supabase
-      .from('system_configs')
-      .select('value')
-      .eq('key', 'ACCRUAL_RATE_PL')
-      .single()
-
     const rate = parseFloat(rateConfig?.value || "1.5")
     
     const today = new Date()
@@ -64,9 +104,27 @@ export async function POST(request: Request) {
       if (monthsDiff > 0) projectedPl += (monthsDiff * rate)
     }
 
+    const mappedBalance = balance ? {
+      id: balance.id,
+      user_id: balance.userId,
+      year: balance.year,
+      opening_pl: balance.openingPl,
+      opening_cl: balance.openingCl,
+      opening_comp: balance.openingComp,
+      pl: basePl, // Deduct pending PL
+      cl: baseCl, // Deduct pending CL
+      sl: balance.sl,
+      comp: baseComp, // Deduct pending Comp
+      pl_accrued: balance.plAccrued,
+      pl_used: balance.plUsed,
+      cl_used: balance.clUsed,
+      sl_used: balance.slUsed,
+      pl_carry_forward: balance.plCarryForward
+    } : null
+
     return NextResponse.json({
       success: true,
-      projectedBalance: { ...balance, projectedPl, projectedDate: startDate },
+      projectedBalance: { ...mappedBalance, projectedPl, projectedDate: startDate },
       days,
       convertedToPl
     })

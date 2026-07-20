@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getSupabaseServer, getServerSession } from "@/lib/supabaseServer"
+import { getServerSession } from "@/lib/supabaseServer"
 import { getCachedDepartments } from "@/lib/cachedData"
 
 export async function GET(req: NextRequest) {

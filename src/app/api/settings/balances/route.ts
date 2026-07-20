@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
 import { getSystemDateTime } from '@/lib/systemDate'
+import prisma from '@/lib/prisma'
 
 export async function PUT(req: NextRequest) {
   const session = await getServerSession()
@@ -13,39 +14,49 @@ export async function PUT(req: NextRequest) {
   }
 
   const { userId, openingPl, openingCl, openingComp } = await req.json()
-  const supabase = await getSupabaseServer()
+  const systemDate = await getSystemDateTime()
 
   try {
-    const { data: updatedBalance, error: updateError } = await supabase
-      .from('leave_balances')
-      .update({
-        opening_pl: openingPl,
-        opening_cl: openingCl,
-        opening_comp: openingComp,
-        updated_at: (await getSystemDateTime()).toISOString()
-      })
-      .eq('user_id', userId)
-      .select('*')
-      .single()
+    const currentYear = systemDate.getFullYear()
+    const balance = await prisma.leaveBalance.findUnique({
+      where: {
+        userId_year: {
+          userId,
+          year: currentYear
+        }
+      }
+    })
 
-    if (updateError || !updatedBalance) {
-      throw new Error(updateError?.message || "Failed to update leave balance")
+    if (!balance) {
+      throw new Error(`Leave balance record not found for user ${userId} and year ${currentYear}`)
     }
 
-    // Create an audit log for this manual balance adjustment
-    const { error: auditError } = await supabase
-      .from('audit_logs')
-      .insert({
-        user_id: sessionUser.id,
-        action: 'OPENING_BALANCE_ADJUSTED',
-        entity: 'LeaveBalance',
-        entity_id: updatedBalance.id,
-        new_value: JSON.stringify({ openingPl, openingCl, openingComp }),
-        metadata: `HR adjusted opening balances for user ${userId}`,
-        created_at: (await getSystemDateTime()).toISOString()
-      })
+    const updatedBalance = await prisma.leaveBalance.update({
+      where: { id: balance.id },
+      data: {
+        openingPl,
+        openingCl,
+        openingComp,
+        updatedAt: systemDate
+      }
+    })
 
-    if (auditError) console.error("Error creating audit log:", auditError)
+    // Create an audit log for this manual balance adjustment
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: 'OPENING_BALANCE_ADJUSTED',
+          entity: 'LeaveBalance',
+          entityId: updatedBalance.id,
+          newValue: JSON.stringify({ openingPl, openingCl, openingComp }),
+          metadata: `HR adjusted opening balances for user ${userId}`,
+          createdAt: systemDate
+        }
+      })
+    } catch (auditError) {
+      console.error("Error creating audit log:", auditError)
+    }
 
     // Keep ledger in sync
     await syncUserLedger(userId, updatedBalance.year)

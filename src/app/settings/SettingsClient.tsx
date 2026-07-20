@@ -68,8 +68,11 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   const [minWorkingDaysThreshold, setMinWorkingDaysThreshold] = useState(initialConfigs?.['min_working_days_threshold'] || "5")
   const [maternityStatutoryCapDays, setMaternityStatutoryCapDays] = useState(initialConfigs?.['maternity_statutory_cap_days'] || "182")
   const [paternityCorporateCapDays, setPaternityCorporateCapDays] = useState(initialConfigs?.['paternity_corporate_cap_days'] || "14")
+  const [clAnnualEntitlement, setClAnnualEntitlement] = useState(initialConfigs?.['CL_ANNUAL_ENTITLEMENT'] || "12")
   const [savingGlobalConfigs, setSavingGlobalConfigs] = useState(false)
   const [resetting, setResetting] = useState(false)
+  
+  const [closureRemarks, setClosureRemarks] = useState("")
   
   const [activeTab, setActiveTab] = useState("yearend")
 
@@ -132,7 +135,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
       const res = await fetch('/api/leave/closure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: 2026, remarks: "Routine year-end closure" }),
+        body: JSON.stringify({ year: 2026, remarks: closureRemarks || "Routine year-end closure" }),
       })
       const data = await res.json()
       if (data.success) {
@@ -155,7 +158,12 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
     }
     
     const amount = parseFloat(adjAmount)
-    const finalAmount = adjKind === 'NEGATIVE' ? -Math.abs(amount) : Math.abs(amount)
+    let finalAmount = amount
+    if (adjKind === 'NEGATIVE') {
+      finalAmount = -Math.abs(amount)
+    } else if (adjKind === 'POSITIVE') {
+      finalAmount = Math.abs(amount)
+    }
 
     try {
       const res = await fetch('/api/leave/adjustment', {
@@ -191,7 +199,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
 
     setApplyLoading(true)
     try {
-      const res = await submitLeaveRequest({
+      const res = (await submitLeaveRequest({
         userId: applyUserId,
         type: applyType,
         startDate: applyStartDate,
@@ -201,7 +209,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
         negativeAmount: 0,
         attachmentUrl: applyAttachmentUrl || undefined,
         halfDay: applyHalfDay
-      })
+      })) as any
 
       if (res.success) {
         toast.success(res.message || "Leave request submitted successfully on behalf of employee.")
@@ -222,6 +230,12 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   }
 
   const handleSaveGlobalConfigs = async () => {
+    const clEnt = parseInt(clAnnualEntitlement)
+    if (isNaN(clEnt) || clEnt < 8) {
+      toast.error("Annual CL Entitlement must be a number and at least 8.")
+      return
+    }
+
     setSavingGlobalConfigs(true)
     try {
       const configs = [
@@ -234,6 +248,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
         { key: 'min_working_days_threshold', value: minWorkingDaysThreshold },
         { key: 'maternity_statutory_cap_days', value: maternityStatutoryCapDays },
         { key: 'paternity_corporate_cap_days', value: paternityCorporateCapDays },
+        { key: 'CL_ANNUAL_ENTITLEMENT', value: String(clEnt) },
       ]
 
       await Promise.all(configs.map(c => 
@@ -322,7 +337,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
     toast.loading(`Simulating ${scenario}...`, { id: 'simulate-toast' })
     try {
       const dateObj = new Date(testDate)
-      if (scenario === "Month-end PL Accrual") {
+      if (scenario === "Month-end PL & CL Accrual" || scenario === "Month-end PL Accrual") {
         const res = await fetch('/api/leave/accrual', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -437,7 +452,11 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Remarks (optional)</Label>
-                  <Textarea placeholder="e.g. Routine year-end closure for FY 2026" />
+                  <Textarea 
+                    placeholder="e.g. Routine year-end closure for FY 2026" 
+                    value={closureRemarks} 
+                    onChange={e => setClosureRemarks(e.target.value)} 
+                  />
                 </div>
                 <Button
                   className="w-full bg-amber-600 hover:bg-amber-700 text-white"
@@ -521,6 +540,11 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                   <Label>Max Allowed Negative Balance</Label>
                   <Input type="number" value={maxNegative} onChange={e => setMaxNegative(e.target.value)} />
                   <p className="text-xs text-slate-500">Example: -5. Default: -5</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Annual CL Entitlement (days)</Label>
+                  <Input type="number" value={clAnnualEntitlement} onChange={e => setClAnnualEntitlement(e.target.value)} />
+                  <p className="text-xs text-slate-500">Minimum: 8. Default: 12. Accrued monthly, not working days dependent.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Accrual Active Service Threshold (days)</Label>
@@ -987,7 +1011,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                   <Label>Simulate Scenario</Label>
                   <div className="grid grid-cols-1 gap-2">
                     {[
-                      "Month-end PL Accrual",
+                      "Month-end PL & CL Accrual",
                       "Year-end Carry Forward",
                       "Year-end Expiry (CL/SL)",
                       "Comp-off Expiry",
@@ -1156,10 +1180,10 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
             <Card className="lg:col-span-2 border-indigo-100 bg-indigo-50/30">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-indigo-700">
-                  <Calculator className="w-5 h-5" /> PL Accrual Engine (Rule 51)
+                  <Calculator className="w-5 h-5" /> PL & CL Accrual Engine (Rule 51)
                 </CardTitle>
                 <CardDescription>
-                  Manually trigger the monthly PL accrual based on days worked (1.5 days/month pro-rata).
+                  Manually trigger the monthly PL (working days dependent) and CL (calendar days prorated) accruals.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1200,8 +1224,8 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                   </Button>
                 </div>
                 <div className="mt-4 p-3 bg-white/50 border border-indigo-100 rounded text-xs text-indigo-800">
-                  <strong>Note:</strong> This will calculate (Worked Days / Total Days) * 1.5 for all active employees. 
-                  It will create a "MONTHLY_ACCRUAL" adjustment entry and update their live PL balances.
+                  <strong>Note:</strong> This will calculate PL accruals (pro-rata based on days worked) and CL accruals (prorated for month of joining, calendar day based) for all active employees. 
+                  It will create "MONTHLY_ACCRUAL" adjustment entries and update their live balances. Deduplication is handled automatically.
                 </div>
               </CardContent>
             </Card>

@@ -58,7 +58,7 @@ export function RegisterClient({
           />
           <Select
             value={selectedDept}
-            onValueChange={setSelectedDept}
+            onValueChange={(val) => setSelectedDept(val || "ALL")}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="All Departments" />

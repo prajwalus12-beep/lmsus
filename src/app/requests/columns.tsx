@@ -76,7 +76,7 @@ export const columns: ColumnDef<LeaveRequestRow>[] = [
       const url = row.getValue("attachmentUrl") as string
       const req = row.original
       const isSickLeave = req.type === "SL"
-      const requiresDoc = isSickLeave && (req.calendarDays ?? 0) >= 2
+      const requiresDoc = isSickLeave && (req.calendarDays ?? 0) > 2
       const hasDoc = !!url && url.trim() !== ""
 
       if (hasDoc) {

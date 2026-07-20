@@ -1,21 +1,18 @@
 import { NextResponse } from "next/server"
-import { getSupabaseServer } from "@/lib/supabaseServer"
+import prisma from "@/lib/prisma"
 import { getSystemDate } from "@/lib/systemDate"
 
 export async function GET(request: Request) {
   try {
     const today = await getSystemDate()
-    const todayStr = today.toISOString()
-    const supabase = await getSupabaseServer()
 
     // Find all APPROVED comp-off entries that have expired and haven't been marked as EXPIRED yet
-    const { data: expiredEntries, error: entriesError } = await supabase
-      .from('comp_off_work_entries')
-      .select('*')
-      .eq('status', 'APPROVED')
-      .lt('expiry_date', todayStr)
-
-    if (entriesError) throw new Error(entriesError.message)
+    const expiredEntries = await prisma.compOffWorkEntry.findMany({
+      where: {
+        status: 'APPROVED',
+        expiryDate: { lt: today }
+      }
+    })
 
     if (!expiredEntries || expiredEntries.length === 0) {
       return NextResponse.json({ success: true, message: "No expired comp-offs found" })
@@ -25,55 +22,52 @@ export async function GET(request: Request) {
 
     // For each expired entry, deduct from COMP balance and mark entry as EXPIRED.
     for (const entry of expiredEntries) {
-      const { data: balance, error: balError } = await supabase
-        .from('leave_balances')
-        .select('*')
-        .eq('user_id', entry.user_id)
-        .single()
-
-      if (balError) {
-        console.error(`Error fetching balance for user ${entry.user_id}:`, balError)
-        continue
-      }
+      const balance = await prisma.leaveBalance.findFirst({
+        where: {
+          userId: entry.userId,
+          year: new Date(entry.dateWorked).getFullYear()
+        }
+      })
 
       if (balance && balance.comp > 0) {
-        const deductAmount = Math.min(entry.days_credited, balance.comp)
+        const deductAmount = Math.min(entry.daysCredited, balance.comp)
 
         // Mark comp-off work entry as EXPIRED
-        await supabase
-          .from('comp_off_work_entries')
-          .update({ status: 'EXPIRED', updated_at: new Date().toISOString() })
-          .eq('id', entry.id)
+        await prisma.compOffWorkEntry.update({
+          where: { id: entry.id },
+          data: { status: 'EXPIRED', updatedAt: new Date() }
+        })
 
         // Deduct from balance
-        await supabase
-          .from('leave_balances')
-          .update({ 
+        await prisma.leaveBalance.update({
+          where: { id: balance.id },
+          data: { 
             comp: balance.comp - deductAmount,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', balance.id)
+            updatedAt: new Date()
+          }
+        })
 
         // Log in audit log
-        await supabase
-          .from('audit_logs')
-          .insert({
-            user_id: entry.user_id,
+        await prisma.auditLog.create({
+          data: {
+            userId: entry.userId,
             action: "COMP_OFF_EXPIRED",
             entity: "CompOffWorkEntry",
-            entity_id: entry.id,
-            old_value: String(balance.comp),
-            new_value: String(balance.comp - deductAmount),
-            metadata: JSON.stringify({ reason: "Cron auto-expiry", daysCredited: entry.days_credited })
-          })
+            entityId: entry.id,
+            oldValue: String(balance.comp),
+            newValue: String(balance.comp - deductAmount),
+            metadata: JSON.stringify({ reason: "Cron auto-expiry", daysCredited: entry.daysCredited }),
+            createdAt: new Date()
+          }
+        })
 
         expiredCount++
       } else {
         // If they have 0 balance, just mark it as EXPIRED
-        await supabase
-          .from('comp_off_work_entries')
-          .update({ status: 'EXPIRED', updated_at: new Date().toISOString() })
-          .eq('id', entry.id)
+        await prisma.compOffWorkEntry.update({
+          where: { id: entry.id },
+          data: { status: 'EXPIRED', updatedAt: new Date() }
+        })
       }
     }
 

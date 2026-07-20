@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getSupabaseServer } from '@/lib/supabaseServer'
+import prisma from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 
 export async function GET(request: Request) {
@@ -12,26 +12,34 @@ export async function GET(request: Request) {
   try {
     const tomorrow = new Date()
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
-    const tomorrowStr = tomorrow.toISOString().split('T')[0]
+    
+    const startOfTomorrow = new Date(Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate(), 0, 0, 0, 0))
+    const endOfTomorrow = new Date(Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate(), 23, 59, 59, 999))
+    const tomorrowStr = startOfTomorrow.toISOString().split('T')[0]
 
-    const supabase = await getSupabaseServer()
-
-    const { data: requests, error } = await supabase
-      .from('leave_requests')
-      .select('*, profiles!leave_requests_user_id_fkey(*), approved_by:profiles!leave_requests_approved_by_id_fkey(*)')
-      .in('status', ['HR_APPROVED', 'L1_APPROVED'])
-      .gte('start_date', `${tomorrowStr}T00:00:00.000Z`)
-      .lte('start_date', `${tomorrowStr}T23:59:59.999Z`)
-
-    if (error) throw new Error(error.message)
+    const requests = await prisma.leaveRequest.findMany({
+      where: {
+        status: { in: ['HR_APPROVED', 'L1_APPROVED'] },
+        startDate: {
+          gte: startOfTomorrow,
+          lte: endOfTomorrow
+        }
+      },
+      include: {
+        user: true,
+        approvedBy: true
+      }
+    })
 
     let count = 0
     for (const req of (requests || [])) {
-      const approvedBy = req.approved_by
-      const user = req.profiles
+      const approvedBy = req.approvedBy
+      const user = req.user
 
       if (approvedBy?.email) {
-        const managerEmail = approvedBy.email
+        const managerEmail = (approvedBy.communicationEmail && approvedBy.communicationEmail !== 'noreply@yopmail.com')
+          ? approvedBy.communicationEmail
+          : approvedBy.email
         const employeeName = user?.name || 'Unknown'
         const subject = `Reminder: ${employeeName} is on leave tomorrow`
         const html = `

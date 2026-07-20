@@ -52,7 +52,6 @@ next-env.d.ts
 
 # Scratch scripts and temporary files
 /scratch/
-data_backup.json
 more_pdf_text*.txt
 parse_pdf.js
 

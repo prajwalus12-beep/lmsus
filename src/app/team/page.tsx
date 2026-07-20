@@ -1,5 +1,5 @@
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { getServerSession } from '@/lib/supabaseServer'
+import prisma from '@/lib/prisma'
 import { TeamDataTable } from './TeamDataTable'
 import { columns } from './columns'
 import { redirect } from 'next/navigation'
@@ -15,39 +15,37 @@ export default async function TeamPage() {
     return <div className="p-8 text-center text-red-500">Access Denied: You do not have permission to view the Team Directory.</div>
   }
 
-  // Use supabaseAdmin to ensure full visibility for HR/Managers
-  // Fetch users, balances, and departments separately
+  // Use Prisma to fetch users, balances, and departments separately
   const [
-    { data: users, error: uError },
-    { data: allBalances, error: bError },
-    { data: allDepts, error: dError }
+    users,
+    allBalances,
+    allDepts
   ] = await Promise.all([
-    supabaseAdmin
-      .from('profiles')
-      .select('*, departments(name)')
-      .neq('role', 'ADMIN')
-      .order('name', { ascending: true }),
-    supabaseAdmin
-      .from('leave_balances')
-      .select('*')
-      .order('year', { ascending: false }),
-    supabaseAdmin
-      .from('departments')
-      .select('name')
-      .order('name', { ascending: true })
+    prisma.user.findMany({
+      where: {
+        role: { not: 'ADMIN' }
+      },
+      include: {
+        department: true
+      },
+      orderBy: { name: 'asc' }
+    }),
+    prisma.leaveBalance.findMany({
+      orderBy: { year: 'desc' }
+    }),
+    prisma.department.findMany({
+      select: { name: true },
+      orderBy: { name: 'asc' }
+    })
   ])
-
-  if (uError) console.error("Error fetching users:", uError)
-  if (bError) console.error("Error fetching balances:", bError)
-  if (dError) console.error("Error fetching departments:", dError)
 
   const departments = (allDepts || []).map(d => d.name)
 
   const balanceMap = new Map()
   if (allBalances) {
     allBalances.forEach(b => {
-      if (!balanceMap.has(b.user_id)) {
-        balanceMap.set(b.user_id, b)
+      if (!balanceMap.has(b.userId)) {
+        balanceMap.set(b.userId, b)
       }
     })
   }
@@ -61,15 +59,15 @@ export default async function TeamPage() {
       email: user.email,
       role: user.role,
       status: user.status,
-      department: user.departments?.name || 'N/A',
-      departmentId: user.department_id || '',
+      department: user.department?.name || 'N/A',
+      departmentId: user.departmentId || '',
       plBalance: balance?.pl ?? 0,
       clSlBalance: balance?.cl ?? 0,
-      joinDate: user.join_date, 
-      lastWorkingDay: user.last_working_day, 
-      probationEndDate: user.probation_end_date, 
-      displayJoinDate: user.join_date ? new Date(user.join_date).toLocaleDateString() : '—',
-      displayLwd: user.last_working_day ? new Date(user.last_working_day).toLocaleDateString() : '—',
+      joinDate: user.joinDate?.toISOString() || null, 
+      lastWorkingDay: user.lastWorkingDay?.toISOString() || null, 
+      probationEndDate: user.probationEndDate?.toISOString() || null, 
+      displayJoinDate: user.joinDate ? new Date(user.joinDate).toLocaleDateString() : '—',
+      displayLwd: user.lastWorkingDay ? new Date(user.lastWorkingDay).toLocaleDateString() : '—',
     }
   })
 

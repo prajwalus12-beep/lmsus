@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 import { getSystemDateTime } from '@/lib/systemDate'
 
 export async function POST(req: NextRequest) {
@@ -15,81 +15,75 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { userId, leaveType, amount, adjustmentType, reason, effectiveYear } = body
-  console.log("ADJUSTMENT POST ATTEMPT DETAILS:", { userId, leaveType, amount, adjustmentType, reason, effectiveYear, sessionUserId: sessionUser.id })
 
   if (!userId || !leaveType || amount === undefined || !adjustmentType || !reason || !effectiveYear) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
   try {
-    // 1. Create the adjustment record
-    const { data: adjustment, error: adjError } = await supabaseAdmin
-      .from('leave_balance_adjustments')
-      .insert({
-        user_id: userId,
-        leave_type: leaveType,
-        amount: parseFloat(amount),
-        adjustment_type: adjustmentType,
-        reason,
-        effective_year: parseInt(effectiveYear),
-        entered_by: sessionUser.id,
-        entered_by_name: sessionUser.name,
-        created_at: (await getSystemDateTime()).toISOString()
-      })
-      .select('*')
-      .single()
-
-    if (adjError || !adjustment) throw new Error(adjError?.message || "Failed to create adjustment")
-
+    const systemDate = await getSystemDateTime()
+    const floatAmount = parseFloat(amount)
     const yearInt = parseInt(effectiveYear)
 
-    // 2. Fetch live balance
-    const { data: balance, error: balError } = await supabaseAdmin
-      .from('leave_balances')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('year', yearInt)
-      .maybeSingle()
+    // 1. Create the adjustment record
+    const adjustment = await prisma.leaveBalanceAdjustment.create({
+      data: {
+        userId: userId,
+        leaveType: leaveType,
+        amount: floatAmount,
+        adjustmentType: adjustmentType,
+        reason: reason,
+        effectiveYear: yearInt,
+        enteredBy: sessionUser.id,
+        enteredByName: sessionUser.name,
+        createdAt: systemDate
+      }
+    })
 
-    if (balError || !balance) throw new Error(balError?.message || `User balance record not found for year ${yearInt}`)
+    // 2. Fetch live balance
+    const balance = await prisma.leaveBalance.findUnique({
+      where: {
+        userId_year: {
+          userId,
+          year: yearInt
+        }
+      }
+    })
+
+    if (!balance) throw new Error(`User balance record not found for year ${yearInt}`)
 
     const typeKey = leaveType.toLowerCase() // pl, cl, sl, comp
-    const currentVal = balance[typeKey] || 0
+    const currentVal = (balance as any)[typeKey] || 0
 
     // 3. Update live balance
-    const { error: updateBalError } = await supabaseAdmin
-      .from('leave_balances')
-      .update({
-        [typeKey]: currentVal + parseFloat(amount),
-        updated_at: (await getSystemDateTime()).toISOString()
-      })
-      .eq('user_id', userId)
-      .eq('year', yearInt)
-
-    if (updateBalError) throw new Error(updateBalError.message)
+    await prisma.leaveBalance.update({
+      where: { id: balance.id },
+      data: {
+        [typeKey]: currentVal + floatAmount,
+        updatedAt: systemDate
+      }
+    })
 
     // 4. Create Audit Log
     try {
-      const { error: logError } = await supabaseAdmin
-        .from('audit_logs')
-        .insert({
-          user_id: sessionUser.id,
+      await prisma.auditLog.create({
+        data: {
+          userId: sessionUser.id,
           action: 'ADJUSTMENT_MADE',
           entity: 'LeaveBalanceAdjustment',
-          entity_id: adjustment.id,
-          new_value: String(currentVal + parseFloat(amount)),
-          old_value: String(currentVal),
+          entityId: adjustment.id,
+          newValue: String(currentVal + floatAmount),
+          oldValue: String(currentVal),
           metadata: JSON.stringify({ targetUserId: userId, leaveType, amount, reason }),
-          created_at: (await getSystemDateTime()).toISOString()
-        })
-
-      if (logError) console.error("Error creating adjustment audit log:", logError)
+          createdAt: systemDate
+        }
+      })
     } catch (logError) {
       console.error("Error creating adjustment audit log:", logError)
     }
 
     // Keep ledger in sync
-    await syncUserLedger(userId, parseInt(effectiveYear))
+    await syncUserLedger(userId, yearInt)
 
     return NextResponse.json({ success: true, adjustment })
   } catch (error: any) {

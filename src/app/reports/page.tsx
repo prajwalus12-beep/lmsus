@@ -1,5 +1,5 @@
 import { getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { ReportsClient } from './ReportsClient'
 
@@ -9,65 +9,55 @@ export default async function ReportsPage() {
 
   const currentYear = new Date().getFullYear()
 
-  // Use supabaseAdmin to bypass RLS for complete organizational reports
-  const { data: users, error } = await supabaseAdmin
-    .from('profiles')
-    .select('*, departments(name), leave_balances(*), negative_leave_trackings(*)')
-    .order('name', { ascending: true })
-
-  if (error) {
-    console.error("Error fetching reports data:", error)
-  }
+  // Use Prisma to fetch all users and their details
+  const users = await prisma.user.findMany({
+    include: {
+      department: true,
+      balances: true,
+      negativeLeaves: true
+    },
+    orderBy: { name: 'asc' }
+  })
 
   const reportData = (users || []).map((user: any) => {
-    // Handle leave_balances which might be an array or a single object
-    let balance = null
-    if (Array.isArray(user.leave_balances)) {
-      balance = user.leave_balances.find((b: any) => b.year === currentYear) || user.leave_balances[0] || null
-    } else if (user.leave_balances) {
-      balance = user.leave_balances
-    }
+    let balance = user.balances.find((b: any) => b.year === currentYear) || user.balances[0] || null
+    const negativeLeaves = user.negativeLeaves || []
     
-    const negativeLeaves = Array.isArray(user.negative_leave_trackings) ? user.negative_leave_trackings : []
-    
-    const dept = Array.isArray(user.departments) ? user.departments[0] : user.departments
-    const deptName = dept?.name || 'N/A'
-
     return {
       id: user.id,
       name: user.name,
       status: user.status,
-      department: deptName,
+      department: user.department?.name || 'N/A',
       // Opening balances
-      openingPl: balance?.opening_pl ?? 0,
-      openingCl: balance?.opening_cl ?? 0,
-      openingComp: balance?.opening_comp ?? 0,
+      openingPl: balance?.openingPl ?? 0,
+      openingCl: balance?.openingCl ?? 0,
+      openingComp: balance?.openingComp ?? 0,
       // Current balances
       pl: balance?.pl ?? 0,
       cl: balance?.cl ?? 0,
       sl: balance?.sl ?? 0,
       comp: balance?.comp ?? 0,
       // Accrual / Used
-      plAccrued: balance?.pl_accrued ?? 0,
-      plUsed: balance?.pl_used ?? 0,
-      clUsed: balance?.cl_used ?? 0,
-      slUsed: balance?.sl_used ?? 0,
+      plAccrued: balance?.plAccrued ?? 0,
+      plUsed: balance?.plUsed ?? 0,
+      clUsed: balance?.clUsed ?? 0,
+      slUsed: balance?.slUsed ?? 0,
       // Carry forward
-      plCarryForward: balance?.pl_carry_forward ?? 0,
+      plCarryForward: balance?.plCarryForward ?? 0,
       // Negative tracking
       negativeTracking: negativeLeaves.map((n: any) => ({
         id: n.id,
-        userId: n.user_id,
-        leaveRequestId: n.leave_request_id,
-        leaveType: n.leave_type,
-        negativeDays: n.negative_days,
-        dailySalary: n.daily_salary,
-        recoveryAmount: n.recovery_amount,
+        userId: n.userId,
+        leaveRequestId: n.leaveRequestId,
+        leaveType: n.leaveType,
+        negativeDays: n.negativeDays,
+        dailySalary: n.dailySalary,
+        recoveryAmount: n.recoveryAmount,
         status: n.status,
-        recoveredAt: n.recovered_at,
+        recoveredAt: n.recoveredAt ? n.recoveredAt.toISOString() : null,
         remarks: n.remarks,
-        createdAt: n.created_at,
-        updatedAt: n.updated_at
+        createdAt: n.createdAt.toISOString(),
+        updatedAt: n.updatedAt.toISOString()
       }))
     }
   })

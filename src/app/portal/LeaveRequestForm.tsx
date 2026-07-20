@@ -149,7 +149,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
     setLoading(true)
     
     try {
-      const res = await submitLeaveRequest({
+      const res = (await submitLeaveRequest({
         userId,
         type, // Server re-verifies logic
         startDate,
@@ -159,7 +159,7 @@ export function LeaveRequestForm({ userId, balances, maxNegative }: { userId: st
         negativeAmount: wouldGoNegative ? Math.abs(netBalance) : 0,
         attachmentUrl: documentUrl,
         halfDay
-      })
+      })) as any
       
       if (!res.success) {
         toast.error(res.error || "Failed to submit leave request. Please try again.")

@@ -45,10 +45,17 @@ async function main() {
         value: 'false',
         description: 'Whether employees can see their CL running balance in the Leave Ledger',
       },
+      /*
       {
         key: 'CL_ENTITLEMENT_PER_YEAR',
         value: '7',
         description: 'Casual Leave entitlement per calendar year',
+      },
+      */
+      {
+        key: 'CL_ANNUAL_ENTITLEMENT',
+        value: '12',
+        description: 'Annual Casual/Sick Leave entitlement (minimum: 8)',
       },
       {
         key: 'PL_ACCRUAL_PER_MONTH',
@@ -81,18 +88,19 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       name: 'Priya Sharma',
-      email: 'admin@yopmail.com',
+      email: 'adminus@yopmail.com',
       role: 'ADMIN',
       password: hashedPassword,
       departmentId: hr.id,
       joinDate: new Date('2023-01-01T00:00:00.000Z'),
       daysWorked: 800,
+      communicationEmail: 'adminus@yopmail.com',
       balances: {
         create: {
           year: 2026,
-          openingPl: 10, openingCl: 7, openingComp: 0,
-          pl: 28, cl: 6, sl: 5, comp: 2, lop: 0,
-          plAccrued: 18, plUsed: 2, clUsed: 1, slUsed: 2,
+          openingPl: 10, openingCl: 0, openingComp: 0,
+          pl: 10, cl: 0, sl: 0, comp: 2, lop: 0,
+          plAccrued: 0, plUsed: 0, clUsed: 0, slUsed: 0,
           plCarryForward: 10,
         }
       }
@@ -108,12 +116,13 @@ async function main() {
       departmentId: eng.id,
       joinDate: new Date('2024-03-15T00:00:00.000Z'),
       daysWorked: 500,
+      communicationEmail: 'manager@yopmail.com',
       balances: {
         create: {
           year: 2026,
-          openingPl: 5, openingCl: 7, openingComp: 0,
-          pl: 20, cl: 5, sl: 5, comp: 0, lop: 0,
-          plAccrued: 15, plUsed: 0, clUsed: 2, slUsed: 2,
+          openingPl: 5, openingCl: 0, openingComp: 0,
+          pl: 5, cl: 0, sl: 0, comp: 0, lop: 0,
+          plAccrued: 0, plUsed: 0, clUsed: 0, slUsed: 0,
           plCarryForward: 5,
         }
       }
@@ -129,12 +138,13 @@ async function main() {
       departmentId: eng.id,
       joinDate: new Date('2025-06-01T00:00:00.000Z'),
       daysWorked: 250,
+      communicationEmail: 'john@yopmail.com',
       balances: {
         create: {
           year: 2026,
-          openingPl: 0, openingCl: 7, openingComp: 0,
-          pl: 12, cl: 4, sl: 7, comp: 1, lop: 0,
-          plAccrued: 12, plUsed: 0, clUsed: 3, slUsed: 0,
+          openingPl: 0, openingCl: 0, openingComp: 0,
+          pl: 0, cl: 0, sl: 0, comp: 1, lop: 0,
+          plAccrued: 0, plUsed: 0, clUsed: 0, slUsed: 0,
           plCarryForward: 0,
         }
       }
@@ -150,12 +160,13 @@ async function main() {
       departmentId: sales.id,
       joinDate: new Date('2026-01-10T00:00:00.000Z'),
       daysWorked: 100,
+      communicationEmail: 'jane@yopmail.com',
       balances: {
         create: {
           year: 2026,
-          openingPl: 0, openingCl: 7, openingComp: 0,
-          pl: 5, cl: 7, sl: 7, comp: 0, lop: 0,
-          plAccrued: 5, plUsed: 0, clUsed: 0, slUsed: 0,
+          openingPl: 0, openingCl: 0, openingComp: 0,
+          pl: 0, cl: 0, sl: 0, comp: 0, lop: 0,
+          plAccrued: 0, plUsed: 0, clUsed: 0, slUsed: 0,
           plCarryForward: 0,
         }
       }
@@ -172,12 +183,13 @@ async function main() {
       joinDate: new Date('2024-09-01T00:00:00.000Z'),
       daysWorked: 400,
       status: 'NOTICE_PERIOD',
+      communicationEmail: 'amit@yopmail.com',
       balances: {
         create: {
           year: 2026,
-          openingPl: 8, openingCl: 7, openingComp: 0,
-          pl: -3, cl: 2, sl: 7, comp: 0, lop: 2,
-          plAccrued: 10, plUsed: 13, clUsed: 5, slUsed: 0,
+          openingPl: 8, openingCl: 0, openingComp: 0,
+          pl: 8, cl: 0, sl: 0, comp: 0, lop: 2,
+          plAccrued: 0, plUsed: 0, clUsed: 0, slUsed: 0,
           plCarryForward: 8,
         }
       }
@@ -193,12 +205,13 @@ async function main() {
       departmentId: sales.id,
       joinDate: new Date('2026-02-01T00:00:00.000Z'),
       daysWorked: 120,
+      communicationEmail: 'alice.wong@yopmail.com',
       balances: {
         create: {
           year: 2026,
-          openingPl: 0, openingCl: 7, openingComp: 0,
-          pl: 6, cl: 7, sl: 7, comp: 0, lop: 0,
-          plAccrued: 6, plUsed: 0, clUsed: 0, slUsed: 0,
+          openingPl: 0, openingCl: 0, openingComp: 0,
+          pl: 0, cl: 0, sl: 0, comp: 0, lop: 0,
+          plAccrued: 0, plUsed: 0, clUsed: 0, slUsed: 0,
           plCarryForward: 0,
         }
       }
@@ -214,12 +227,13 @@ async function main() {
       departmentId: eng.id,
       joinDate: new Date('2025-11-15T00:00:00.000Z'),
       daysWorked: 180,
+      communicationEmail: 'diana.prince@yopmail.com',
       balances: {
         create: {
           year: 2026,
-          openingPl: 0, openingCl: 7, openingComp: 0,
-          pl: 9, cl: 7, sl: 7, comp: 0, lop: 0,
-          plAccrued: 9, plUsed: 0, clUsed: 0, slUsed: 0,
+          openingPl: 0, openingCl: 0, openingComp: 0,
+          pl: 0, cl: 0, sl: 0, comp: 0, lop: 0,
+          plAccrued: 0, plUsed: 0, clUsed: 0, slUsed: 0,
           plCarryForward: 0,
         }
       }
@@ -241,38 +255,67 @@ async function main() {
       }
     })
 
-    // Add Monthly Accruals for EVERYONE
-    const months = [0, 1, 2] // Jan, Feb, March (full 1.5)
-    for (const m of months) {
-      await prisma.leaveBalanceAdjustment.create({
-        data: {
-          userId: u.id,
-          leaveType: 'PL',
-          amount: 1.5,
-          adjustmentType: 'MONTHLY_ACCRUAL',
-          reason: `Monthly PL Accrual (22 working days: 31d - 9w - 0h - 0l)`,
-          effectiveYear: 2026,
-          enteredBy: admin.id,
-          enteredByName: 'System (Auto)',
-          createdAt: new Date(2026, m + 1, 1, 0, 0, 1) // 1st of next month, just after midnight
-        }
-      })
-    }
+    // Add Monthly PL & CL Accruals for EVERYONE (Jan through June)
+    for (let m = 0; m <= 5; m++) {
+      const joinDate = new Date(u.joinDate)
+      const joinYear = joinDate.getUTCFullYear()
+      const joinMonth = joinDate.getUTCMonth()
+      const currentYear = 2026
 
-    // April Accrual (1.0 due to 10 days leave for all)
-    await prisma.leaveBalanceAdjustment.create({
-      data: {
-        userId: u.id,
-        leaveType: 'PL',
-        amount: 1.0,
-        adjustmentType: 'MONTHLY_ACCRUAL',
-        reason: `Monthly PL Accrual (12 working days: 30d - 8w - 0h - 10l)`,
-        effectiveYear: 2026,
-        enteredBy: admin.id,
-        enteredByName: 'System (Auto)',
-        createdAt: new Date(2026, 4, 1, 0, 0, 1) // May 1st
+      const joinTimeVal = joinYear * 12 + joinMonth
+      const loopTimeVal = currentYear * 12 + m
+
+      if (loopTimeVal >= joinTimeVal) {
+        // --- 1. Seed PL Accrual ---
+        let plAmount = 1.5
+        let plReason = `Monthly PL Accrual (22 working days: 31d - 9w - 0h - 0l)`
+
+        // Special check: in April (m === 3), everyone had a 10-day leave request, so pro-rata is 1.0 day
+        if (m === 3) {
+          plAmount = 1.0
+          plReason = `Monthly PL Accrual (12 working days: 30d - 8w - 0h - 10l)`
+        }
+
+        await prisma.leaveBalanceAdjustment.create({
+          data: {
+            userId: u.id,
+            leaveType: 'PL',
+            amount: plAmount,
+            adjustmentType: 'MONTHLY_ACCRUAL',
+            reason: plReason,
+            effectiveYear: currentYear,
+            enteredBy: admin.id,
+            enteredByName: 'System (Auto)',
+            createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+          }
+        })
+
+        // --- 2. Seed CL Accrual ---
+        let clAmount = 1.0
+        let isProrated = false
+        if (joinYear === currentYear && joinMonth === m) {
+          isProrated = true
+          const daysInMonth = new Date(currentYear, m + 1, 0).getDate()
+          const joiningDay = joinDate.getUTCDate()
+          const daysServed = daysInMonth - joiningDay + 1
+          clAmount = parseFloat(((daysServed / daysInMonth) * 1.0).toFixed(2))
+        }
+
+        await prisma.leaveBalanceAdjustment.create({
+          data: {
+            userId: u.id,
+            leaveType: 'CL',
+            amount: clAmount,
+            adjustmentType: 'MONTHLY_ACCRUAL',
+            reason: `Monthly CL Accrual (Annual Entitlement: 12d, Prorated: ${isProrated ? 'Yes' : 'No'})`,
+            effectiveYear: currentYear,
+            enteredBy: admin.id,
+            enteredByName: 'System (Auto)',
+            createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+          }
+        })
       }
-    })
+    }
   }
 
   // Negative leave tracking for Amit (Rule 44/45)

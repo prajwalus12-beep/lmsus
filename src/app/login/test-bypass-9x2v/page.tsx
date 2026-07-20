@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { supabase } from "@/lib/supabaseClient"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,7 +11,7 @@ import { Eye, EyeOff, Loader2, Users, LogIn } from "lucide-react"
 const TEST_ACCOUNTS = [
   {
     name: "Priya Sharma",
-    email: "admin@yopmail.com",
+    email: "adminus@yopmail.com",
     role: "HR Admin",
     dept: "HR",
     color: "bg-purple-100 text-purple-700 border-purple-200",
@@ -67,23 +66,27 @@ export default function TestingLoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    
-    setLoading(false)
-    if (!error && data?.user) {
-      toast.success("Welcome back!")
-      router.push("/")
-      router.refresh()
-    } else {
-      let msg = error?.message || "Invalid email or password. Please try again."
-      if (msg.includes("API key")) {
-        msg = "Supabase API key is invalid. Please check your .env file."
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      })
+      
+      const data = await res.json()
+      setLoading(false)
+      
+      if (res.ok && data?.success) {
+        toast.success("Welcome back!")
+        window.location.href = "/"
+      } else {
+        toast.error(data?.error || "Invalid email or password. Please try again.")
       }
-      toast.error(msg)
+    } catch (err: any) {
+      setLoading(false)
+      toast.error("Failed to connect to the authentication server.")
     }
   }
 

@@ -1,4 +1,6 @@
-import { getSupabaseServer } from './supabaseServer'
+process.env.TZ = 'Asia/Kolkata'
+
+import prisma from './prisma'
 
 /**
  * Returns the current system date.
@@ -7,16 +9,12 @@ import { getSupabaseServer } from './supabaseServer'
  */
 export async function getSystemDate(): Promise<Date> {
   try {
-    const supabase = await getSupabaseServer()
-    const { data: override } = await supabase
-      .from('system_date_overrides')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const override = await prisma.systemDateOverride.findFirst({
+      orderBy: { createdAt: 'desc' }
+    })
 
-    if (override && override.is_test_mode && override.override_date) {
-      return new Date(override.override_date)
+    if (override && override.isTestMode && override.overrideDate) {
+      return new Date(override.overrideDate)
     }
   } catch (error) {
     console.error('Error fetching system date override:', error)
@@ -32,16 +30,12 @@ export async function getSystemDate(): Promise<Date> {
  */
 export async function getSystemDateTime(): Promise<Date> {
   try {
-    const supabase = await getSupabaseServer()
-    const { data: override } = await supabase
-      .from('system_date_overrides')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const override = await prisma.systemDateOverride.findFirst({
+      orderBy: { createdAt: 'desc' }
+    })
 
-    if (override && override.is_test_mode && override.override_date) {
-      const simDate = new Date(override.override_date)
+    if (override && override.isTestMode && override.overrideDate) {
+      const simDate = new Date(override.overrideDate)
       const realNow = new Date()
       return new Date(
         simDate.getFullYear(),
@@ -64,29 +58,21 @@ export async function getSystemDateTime(): Promise<Date> {
  * Sets the system date override.
  */
 export async function setSystemDateOverride(date: Date | null, userId: string, userName: string) {
-  const supabase = await getSupabaseServer()
+  const oldOverride = await prisma.systemDateOverride.findFirst({
+    orderBy: { createdAt: 'desc' }
+  })
 
-  const { data: oldOverride } = await supabase
-    .from('system_date_overrides')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const { data, error } = await supabase
-    .from('system_date_overrides')
-    .insert({
-      is_test_mode: date !== null,
-      override_date: date ? date.toISOString() : null,
-      changed_by: userId,
-      changed_by_name: userName,
-      old_date: oldOverride?.override_date || new Date().toISOString(),
-      new_date: date ? date.toISOString() : null,
+  const newOverride = await prisma.systemDateOverride.create({
+    data: {
+      isTestMode: date !== null,
+      overrideDate: date,
+      changedBy: userId,
+      changedByName: userName,
+      oldDate: oldOverride?.overrideDate || new Date(),
+      newDate: date,
       reason: date === null ? 'Disabled Test Mode' : 'Manual Date Override'
-    })
-    .select()
-    .single()
+    }
+  })
 
-  if (error) throw new Error(error.message)
-  return data
+  return newOverride
 }

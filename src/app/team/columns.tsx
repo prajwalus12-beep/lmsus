@@ -173,13 +173,18 @@ export const columns: ColumnDef<TeamRow>[] = [
         header: () => <span className="text-xs font-bold">PL</span>,
         cell: ({ row }) => {
           const bal = row.getValue("plBalance") as number
-          return <span className={`text-xs ${bal < 5 ? "text-red-600 font-bold" : ""}`}>{bal}</span>
+          const formatted = Number.isInteger(bal) ? bal : parseFloat(bal.toFixed(2))
+          return <span className={`text-xs ${bal < 5 ? "text-red-600 font-bold" : ""}`}>{formatted}</span>
         }
       },
       {
         accessorKey: "clSlBalance",
         header: () => <span className="text-xs font-bold">CL/SL</span>,
-        cell: ({ row }) => <span className="text-xs">{row.getValue("clSlBalance")}</span>
+        cell: ({ row }) => {
+          const bal = row.getValue("clSlBalance") as number
+          const formatted = Number.isInteger(bal) ? bal : parseFloat(bal.toFixed(2))
+          return <span className="text-xs">{formatted}</span>
+        }
       },
     ]
   },

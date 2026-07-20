@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { getServerSession } from '@/lib/supabaseServer'
 import { getSystemDate } from '@/lib/systemDate'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -17,26 +17,22 @@ export async function POST(req: NextRequest) {
 
   try {
     if (scenario === 'Probation Completion') {
-      const { data: users, error } = await supabaseAdmin
-        .from('profiles')
-        .select('name, join_date, probation_end_date, status')
-        .eq('status', 'ACTIVE')
-
-      if (error) throw new Error(error.message)
+      const users = await prisma.user.findMany({
+        where: { status: 'ACTIVE' },
+        select: { name: true, joinDate: true, probationEndDate: true }
+      })
 
       const completedUsers = []
 
-      const { data: config } = await supabaseAdmin
-        .from('system_configs')
-        .select('value')
-        .eq('key', 'PROBATION_PERIOD_MONTHS')
-        .maybeSingle()
+      const config = await prisma.systemConfig.findUnique({
+        where: { key: 'PROBATION_PERIOD_MONTHS' }
+      })
       const probationMonths = parseInt(config?.value || '6')
 
-      for (const u of (users || [])) {
-        let probEnd = u.probation_end_date ? new Date(u.probation_end_date) : null
-        if (!probEnd && u.join_date) {
-          probEnd = new Date(u.join_date)
+      for (const u of users) {
+        let probEnd = u.probationEndDate ? new Date(u.probationEndDate) : null
+        if (!probEnd && u.joinDate) {
+          probEnd = new Date(u.joinDate)
           probEnd.setMonth(probEnd.getMonth() + probationMonths)
         }
 

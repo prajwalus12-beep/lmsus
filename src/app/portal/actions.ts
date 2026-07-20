@@ -1,7 +1,7 @@
 "use server"
 
-import { getSupabaseServer, getServerSession } from "@/lib/supabaseServer"
-import { supabaseAdmin } from "@/lib/supabaseAdmin"
+import prisma from "@/lib/prisma"
+import { getServerSession } from "@/lib/supabaseServer"
 import { revalidatePath } from "next/cache"
 import { calculateRequestedDays } from "@/lib/leaveCalculator"
 import { sendEmail } from "@/lib/email"
@@ -50,472 +50,302 @@ export async function submitLeaveRequest(data: {
   try {
     let { userId, type, startDate, endDate, reason, isNegative, negativeAmount, attachmentUrl, halfDay = "NONE" } = data
   
-  // Verify session is active and check permissions
-  const session = await getServerSession()
-  if (!session) {
-    throw new Error("Unauthorized: Not logged in.")
-  }
-
-  if (session.user.id !== userId) {
-    const { data: currentUserProfile } = await supabaseAdmin
-      .from('profiles')
-      .select('role')
-      .eq('id', session.user.id)
-      .single()
-
-    const isAuthorized = currentUserProfile && ['ADMIN', 'MANAGER'].includes(currentUserProfile.role)
-    if (!isAuthorized) {
-      throw new Error("Unauthorized: You do not have permission to submit leave requests on behalf of other employees.")
+    // Verify session is active and check permissions
+    const session = await getServerSession()
+    if (!session) {
+      throw new Error("Unauthorized: Not logged in.")
     }
-  }
 
-  const parseAsUTCDate = (dateStr: string | Date) => {
-    if (dateStr instanceof Date) return dateStr
-    const isoStr = typeof dateStr === 'string' ? dateStr.split('T')[0] : ''
-    const [y, m, d] = isoStr.split('-').map(Number)
-    return new Date(Date.UTC(y, m - 1, d))
-  }
+    if (session.user.id !== userId) {
+      const currentUser = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { role: true }
+      })
 
-  const supabase = await getSupabaseServer()
-  const startObj = parseAsUTCDate(startDate)
-  const endObj = parseAsUTCDate(endDate)
-  if (startObj > endObj) {
-    throw new Error("Start date cannot be after end date.")
-  }
-  const leaveYear = startObj.getUTCFullYear()
-
-  const yearStart = `${leaveYear}-01-01`
-  const yearEnd = `${leaveYear}-12-31`
-
-  const [
-    userRes,
-    holidaysRes,
-    sandwichRes,
-    probationRes,
-    maxNegativeRes,
-    existingLeavesRes
-  ] = await Promise.all([
-    supabase.from('profiles').select('name, email, communication_email, join_date, probation_end_date').eq('id', userId).single(),
-    supabase.from('holidays').select('*').gte('date', yearStart).lte('date', yearEnd),
-    supabase.from('system_configs').select('value').eq('key', 'weekend_sandwich_rule').single(),
-    supabase.from('system_configs').select('value').eq('key', 'PROBATION_PERIOD_MONTHS').single(),
-    supabase.from('system_configs').select('value').eq('key', 'MAX_NEGATIVE_LEAVE').maybeSingle(),
-    supabaseAdmin.from('leave_requests').select('start_date, end_date, type, status').eq('user_id', userId).in('status', ['PENDING', 'L1_APPROVED', 'HR_APPROVED'])
-  ]);
-
-  console.log("SUBMIT DEBUG - User Query:", userRes);
-  console.log("SUBMIT DEBUG - Holidays Query:", holidaysRes);
-  console.log("SUBMIT DEBUG - Leaves Query:", existingLeavesRes);
-
-  const user = userRes.data;
-  const holidays = holidaysRes.data;
-  const sandwichConfig = sandwichRes.data;
-  const probationConfig = probationRes.data;
-  const maxNegativeConfig = maxNegativeRes.data;
-  const existingLeaves = existingLeavesRes.data;
-  
-  const probationMonths = parseInt(probationConfig?.value || "6")
-  const maxNegativeLimit = parseFloat(maxNegativeConfig?.value || "-5")
-
-  const holidayDates = new Set((holidays || []).map((h: any) => h.date.split('T')[0]))
-  const isSandwichEnabled = sandwichConfig?.value === "true"
-
-  const isHalfDay = halfDay !== "NONE"
-  const { days, convertedToPl } = calculateRequestedDays(
-    startObj, 
-    endObj, 
-    holidayDates, 
-    isSandwichEnabled, 
-    type, 
-    isHalfDay
-  )
-
-  // Rule 37: Auto-convert CL to PL
-  if (convertedToPl) {
-    type = "PL"
-  }
-
-  // Date overlap validation check
-  for (const existing of existingLeaves || []) {
-    const existingStart = parseAsUTCDate(existing.start_date)
-    const existingEnd = parseAsUTCDate(existing.end_date)
-    const overlaps = startObj <= existingEnd && endObj >= existingStart
-    if (overlaps) {
-      throw new Error(`Cannot apply: You already have an overlapping ${existing.type} leave request (${existing.status.replace(/_/g, ' ')}).`)
-    }
-  }
-
-  // 1. Block Half-day for PL
-  if (type === "PL" && isHalfDay) {
-    throw new Error("Privilege Leave (PL) cannot be applied as a half day.")
-  }
-
-  // 2. CL & SL Duration Caps
-  if (type === "CL" && days > 1.0) {
-    throw new Error("Casual Leave (CL) requests are limited to a maximum of 1 day.")
-  }
-  if (type === "SL" && days > 2.0) {
-    throw new Error("Sick Leave (SL) requests are limited to a maximum of 2 days.")
-  }
-
-  // 2-Day Sick Leave Document Verification Rule
-  if (type === "SL" && days >= 2.0) {
-    if (!attachmentUrl || attachmentUrl.trim() === "") {
-      throw new Error("Cannot apply: A valid medical certificate/document URL is mandatory for Sick Leave of 2 or more days.")
-    }
-    if (!validateAttachmentUrl(attachmentUrl)) {
-      throw new Error("Cannot apply: The document URL must be a secure link from an authorized provider (Google Drive, Dropbox, Sharepoint, or internal domain).")
-    }
-  }
-
-  // 3. Adjacency Blocks (Friday-Monday and Holidays) - Only enforced for Casual Leave (CL)
-  if (type === "CL") {
-    const getDatesSet = (start: Date, end: Date) => {
-      const dates = new Set<string>()
-      let curr = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()))
-      const finalEnd = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()))
-      while (curr <= finalEnd) {
-        dates.add(curr.toISOString().split('T')[0])
-        curr.setUTCDate(curr.getUTCDate() + 1)
+      const isAuthorized = currentUser && ['ADMIN', 'MANAGER'].includes(currentUser.role)
+      if (!isAuthorized) {
+        throw new Error("Unauthorized: You do not have permission to submit leave requests on behalf of other employees.")
       }
-      return dates
     }
 
-    const requestedDates = getDatesSet(startObj, endObj)
-    const existingClDates = new Set<string>()
-    for (const req of (existingLeaves || [])) {
-      if (req.type === 'CL') {
-        const dates = getDatesSet(parseAsUTCDate(req.start_date), parseAsUTCDate(req.end_date))
-        for (const d of dates) {
-          existingClDates.add(d)
+    const parseAsUTCDate = (dateStr: string | Date) => {
+      if (dateStr instanceof Date) return dateStr
+      const isoStr = typeof dateStr === 'string' ? dateStr.split('T')[0] : ''
+      const [y, m, d] = isoStr.split('-').map(Number)
+      return new Date(Date.UTC(y, m - 1, d))
+    }
+
+    const startObj = parseAsUTCDate(startDate)
+    const endObj = parseAsUTCDate(endDate)
+    if (startObj > endObj) {
+      throw new Error("Start date cannot be after end date.")
+    }
+    const leaveYear = startObj.getUTCFullYear()
+
+    const yearStart = new Date(Date.UTC(leaveYear, 0, 1))
+    const yearEnd = new Date(Date.UTC(leaveYear, 11, 31, 23, 59, 59, 999))
+
+    // Query dependencies using Prisma
+    const [
+      user,
+      holidays,
+      sandwichConfig,
+      probationConfig,
+      maxNegativeConfig,
+      existingLeaves,
+      balance,
+      maternityConfig,
+      paternityConfig
+    ] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        include: { department: true }
+      }),
+      prisma.holiday.findMany({
+        where: {
+          date: {
+            gte: yearStart,
+            lte: yearEnd
+          }
+        }
+      }),
+      prisma.systemConfig.findUnique({ where: { key: 'weekend_sandwich_rule' } }),
+      prisma.systemConfig.findUnique({ where: { key: 'PROBATION_PERIOD_MONTHS' } }),
+      prisma.systemConfig.findFirst({ where: { key: { in: ['MAX_NEGATIVE_LEAVE', 'MAX_NEGATIVE_BALANCE_ALLOWED'] } } }),
+      prisma.leaveRequest.findMany({
+        where: {
+          userId,
+          status: { in: ['PENDING', 'L1_APPROVED', 'HR_APPROVED'] },
+          startDate: { gte: yearStart },
+          endDate: { lte: yearEnd }
+        }
+      }),
+      prisma.leaveBalance.findUnique({
+        where: {
+          userId_year: {
+            userId,
+            year: leaveYear
+          }
+        }
+      }),
+      prisma.systemConfig.findUnique({ where: { key: 'maternity_statutory_cap_days' } }),
+      prisma.systemConfig.findUnique({ where: { key: 'paternity_corporate_cap_days' } })
+    ])
+
+    if (!user) throw new Error("User profile not found.")
+
+    const isSandwichEnabled = sandwichConfig?.value === 'true'
+    const probationMonths = parseInt(probationConfig?.value || "6")
+    const maxNegativeLimit = parseFloat(maxNegativeConfig?.value || "-5")
+    const matCap = parseInt(maternityConfig?.value || "182")
+    const patCap = parseInt(paternityConfig?.value || "14")
+
+    // Validation checks
+    const holidayDates = new Set(holidays.map((h: any) => h.date.toISOString().split('T')[0]))
+    const { days, effectiveType } = calculateRequestedDays(startObj, endObj, holidayDates, isSandwichEnabled, type, halfDay !== 'NONE')
+
+    if (days <= 0) {
+      throw new Error("Calculated leave duration is 0 days (e.g., all weekends/holidays).")
+    }
+
+    // Calculate pending request days for this user
+    let pendingPl = 0
+    let pendingCl = 0
+    let pendingComp = 0
+
+    for (const req of existingLeaves) {
+      if (req.status === 'PENDING' || req.status === 'L1_APPROVED') {
+        const { days: pDays, effectiveType } = calculateRequestedDays(
+          new Date(req.startDate),
+          new Date(req.endDate),
+          holidayDates,
+          isSandwichEnabled,
+          req.type,
+          req.halfDay !== 'NONE'
+        )
+        const rawType = (effectiveType || req.type).toUpperCase()
+        if (rawType === 'PL') {
+          pendingPl += pDays
+        } else if (rawType === 'CL' || rawType === 'SL') {
+          pendingCl += pDays
+        } else if (rawType === 'COMP') {
+          pendingComp += pDays
         }
       }
     }
 
-    const allClDates = new Set([...existingClDates, ...requestedDates])
+    // Server-side check for negative limit including pending leaves
+    const activeType = (effectiveType || type).toUpperCase()
+    if (type !== 'LOP') {
+      const currentPl = balance?.pl || 0
+      const currentCl = balance?.cl || 0
+      const currentComp = balance?.comp || 0
 
-    // Friday-Monday Adjacency Check
-    for (const dateStr of requestedDates) {
-      const d = parseAsUTCDate(dateStr)
-      const day = d.getUTCDay() // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
-      if (day === 5) {
-        const mon = new Date(d)
-        mon.setUTCDate(mon.getUTCDate() + 3)
-        const monStr = mon.toISOString().split('T')[0]
-        if (allClDates.has(monStr)) {
-          throw new Error("Cannot apply: taking CL on both Friday and Monday is not allowed.")
-        }
+      let netBalance = 0
+      if (activeType === 'PL') {
+        netBalance = currentPl - pendingPl - days
+      } else if (activeType === 'CL' || activeType === 'SL') {
+        netBalance = currentCl - pendingCl - days
+      } else if (activeType === 'COMP') {
+        netBalance = currentComp - pendingComp - days
       }
-      if (day === 1) {
-        const fri = new Date(d)
-        fri.setUTCDate(fri.getUTCDate() - 3)
-        const friStr = fri.toISOString().split('T')[0]
-        if (allClDates.has(friStr)) {
-          throw new Error("Cannot apply: taking CL on both Friday and Monday is not allowed.")
-        }
+
+      if (activeType === 'COMP' && netBalance < 0) {
+        throw new Error("Compensatory Off cannot go into negative balance. Please apply for Loss of Pay instead.")
       }
-    }
 
-    // National Holiday Adjacency Check
-    // 1. CL Block Sandwiched by Holidays Check
-    // Group all active/requested CL dates into contiguous blocks of consecutive days
-    const sortedClDates = Array.from(allClDates).sort()
-    const contiguousBlocks: string[][] = []
-    let currentBlock: string[] = []
-
-    for (const dateStr of sortedClDates) {
-      if (currentBlock.length === 0) {
-        currentBlock.push(dateStr)
-      } else {
-        const lastDate = parseAsUTCDate(currentBlock[currentBlock.length - 1])
-        const currentDate = parseAsUTCDate(dateStr)
-        const diffDays = Math.round((currentDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
-        if (diffDays === 1) {
-          currentBlock.push(dateStr)
-        } else {
-          contiguousBlocks.push(currentBlock)
-          currentBlock = [dateStr]
-        }
-      }
-    }
-    if (currentBlock.length > 0) {
-      contiguousBlocks.push(currentBlock)
-    }
-
-    for (const block of contiguousBlocks) {
-      // Check if this block contains any newly requested date
-      const hasNewRequest = block.some(d => requestedDates.has(d))
-      if (hasNewRequest) {
-        // Date immediately before the block
-        const firstDate = parseAsUTCDate(block[0])
-        const prev = new Date(firstDate)
-        prev.setUTCDate(prev.getUTCDate() - 1)
-        const prevStr = prev.toISOString().split('T')[0]
-
-        // Date immediately after the block
-        const lastDate = parseAsUTCDate(block[block.length - 1])
-        const next = new Date(lastDate)
-        next.setUTCDate(next.getUTCDate() + 1)
-        const nextStr = next.toISOString().split('T')[0]
-
-        if (holidayDates.has(prevStr) && holidayDates.has(nextStr)) {
-          throw new Error(`Cannot apply: CL cannot be sandwiched between national holidays (${prevStr} and ${nextStr}).`)
-        }
+      if (netBalance < maxNegativeLimit) {
+        throw new Error(`Cannot submit request: Net balance would be ${netBalance} days, which exceeds the allowed negative limit of ${maxNegativeLimit} days (including pending requests).`)
       }
     }
 
-    // 2. Holiday Sandwiched by CL Check
-    // Check if any national holiday is sandwiched by CL leaves on both sides
-    for (const holStr of Array.from(holidayDates)) {
-      const holDate = parseAsUTCDate(holStr)
-      const prev = new Date(holDate)
-      prev.setUTCDate(prev.getUTCDate() - 1)
-      const prevStr = prev.toISOString().split('T')[0]
-
-      const next = new Date(holDate)
-      next.setUTCDate(next.getUTCDate() + 1)
-      const nextStr = next.toISOString().split('T')[0]
-
-      if (allClDates.has(prevStr) && allClDates.has(nextStr)) {
-        // Only block if at least one of these sandwiching CL dates is in the newly requested dates
-        if (requestedDates.has(prevStr) || requestedDates.has(nextStr)) {
-          throw new Error(`Cannot apply: National holiday (${holStr}) cannot be sandwiched between CL leaves.`)
-        }
-      }
-    }
-  }
-
-  // 4. Backend Negative Leave Limit Validation (SL/CL mapped to cl, PL mapped to pl)
-  const isPaidLeave = ['PL', 'CL', 'SL'].includes(type)
-  const isCompLeave = type === 'COMP'
-  
-  // Fetch dynamic caps for MAT and PAT
-  const [
-    maternityCapRes,
-    paternityCapRes
-  ] = await Promise.all([
-    supabaseAdmin.from('system_configs').select('value').eq('key', 'maternity_statutory_cap_days').maybeSingle(),
-    supabaseAdmin.from('system_configs').select('value').eq('key', 'paternity_corporate_cap_days').maybeSingle()
-  ])
-  const matCap = parseInt(maternityCapRes?.data?.value || "182")
-  const patCap = parseInt(paternityCapRes?.data?.value || "14")
-
-  if (type === 'MAT' || type === 'PAT') {
-    const existingTypeLeaves = existingLeaves?.filter((l: any) => l.type === type) || [];
-    const usedDays = existingTypeLeaves.reduce((sum: number, l: any) => {
-      const sObj = parseAsUTCDate(l.start_date);
-      const eObj = parseAsUTCDate(l.end_date);
-      const { days: d } = calculateRequestedDays(sObj, eObj, holidayDates, isSandwichEnabled, type, false);
-      return sum + d;
-    }, 0);
-    const cap = type === 'MAT' ? matCap : patCap;
-    if (usedDays + days > cap) {
-      throw new Error(`Cannot apply: Total requested ${type === 'MAT' ? 'Maternity' : 'Paternity'} leave (${usedDays + days} days) exceeds the dynamic cap of ${cap} days.`);
-    }
-  }
-
-  const activeBucket = (type === 'SL' || type === 'CL') ? 'cl' : type.toLowerCase()
-  const { data: balance } = await supabaseAdmin
-    .from('leave_balances')
-    .select('*')
-    .eq('user_id', userId)
-    .single()
-
-  const currentBalance = balance ? balance[activeBucket] || 0 : 0
-  const netBalance = currentBalance - days
-
-  if (isCompLeave && netBalance < 0) {
-    throw new Error("Compensatory Off cannot go into negative balance.")
-  }
-
-  if (isPaidLeave && netBalance < maxNegativeLimit) {
-    const allowedPaidDays = currentBalance - maxNegativeLimit
-    if (allowedPaidDays <= 0) {
-      // The employee is already at/below the max negative limit. Convert entire request to LOP!
-      type = 'LOP'
-    } else {
-      // Split the request. First N active days as paid leave, rest as LOP.
-      const allRequestDays: Date[] = []
-      let curr = new Date(startObj)
-      while (curr <= endObj) {
-        allRequestDays.push(new Date(curr))
-        curr.setUTCDate(curr.getUTCDate() + 1)
-      }
-
-      // Filter out weekends/holidays if sandwich doesn't apply
-      const activeDays: Date[] = []
-      for (const d of allRequestDays) {
-        const dateStr = d.toISOString().split('T')[0]
-        const isWe = d.getUTCDay() === 0 || d.getUTCDay() === 6
-        const isHol = holidayDates.has(dateStr)
-        const applySandwich = (type === "CL" || type === "PL") && isSandwichEnabled
-        if (!applySandwich && (isWe || isHol)) {
-          continue
-        }
-        activeDays.push(d)
-      }
-
-      const dayWeight = halfDay !== 'NONE' ? 0.5 : 1.0
-      const daysCountNeeded = allowedPaidDays
-      let paidActiveCount = 0
-      let splitIndex = -1
-
-      for (let i = 0; i < activeDays.length; i++) {
-        paidActiveCount += dayWeight
-        if (paidActiveCount >= daysCountNeeded) {
-          splitIndex = i
-          break
-        }
-      }
-
-      if (splitIndex !== -1 && splitIndex < activeDays.length - 1) {
-        const paidEndObj = activeDays[splitIndex]
-        const unpaidStartObj = new Date(paidEndObj)
-        unpaidStartObj.setUTCDate(unpaidStartObj.getUTCDate() + 1)
-
-        const paidDaysCalc = calculateRequestedDays(startObj, paidEndObj, holidayDates, isSandwichEnabled, type, halfDay !== 'NONE')
-        const paidDays = paidDaysCalc.days
-
-        const { data: paidRequest, error: paidError } = await supabaseAdmin
-          .from('leave_requests')
-          .insert({
-            user_id: userId,
-            type: type,
-            start_date: startObj.toISOString(),
-            end_date: paidEndObj.toISOString(),
-            half_day: halfDay,
-            reason: reason + " (Paid Split)",
-            status: "PENDING",
-            is_negative: true,
-            negative_amount: Math.abs(currentBalance - paidDays < 0 ? currentBalance - paidDays : 0),
-            attachment_url: attachmentUrl || null,
-            year: leaveYear,
-            created_at: (await getSystemDateTime()).toISOString(),
-          })
-          .select()
-          .single()
-
-        if (paidError) throw new Error(paidError.message)
-
-        const unpaidDaysCalc = calculateRequestedDays(unpaidStartObj, endObj, holidayDates, isSandwichEnabled, 'LOP', halfDay !== 'NONE')
-        const unpaidDays = unpaidDaysCalc.days
-
-        const { data: unpaidRequest, error: unpaidError } = await supabaseAdmin
-          .from('leave_requests')
-          .insert({
-            user_id: userId,
-            type: 'LOP',
-            start_date: unpaidStartObj.toISOString(),
-            end_date: endObj.toISOString(),
-            half_day: halfDay,
-            reason: reason + " (Auto-routed LOP Overage)",
-            status: "PENDING",
-            is_negative: false,
-            negative_amount: 0,
-            attachment_url: attachmentUrl || null,
-            year: leaveYear,
-            created_at: (await getSystemDateTime()).toISOString(),
-          })
-          .select()
-          .single()
-
-        if (unpaidError) throw new Error(unpaidError.message)
-
-        // Log the action using admin client
-        await supabaseAdmin.from('audit_logs').insert({
-          user_id: userId,
-          action: 'LEAVE_APPLIED_SPLIT',
-          entity: 'LeaveRequest',
-          entity_id: paidRequest.id,
-          metadata: JSON.stringify({ originalType: type, paidDays, lopDays: unpaidDays, paidRequestId: paidRequest.id, lopRequestId: unpaidRequest.id }),
-          created_at: (await getSystemDateTime()).toISOString()
-        })
-
-        revalidatePath("/portal")
-        revalidatePath("/")
-        return { success: true, request: paidRequest, split: true, message: `Request successfully split: ${paidDays} days of ${type} and ${unpaidDays} days of LOP due to exceeding negative balance limits.` }
-      } else {
-        type = 'LOP'
-      }
-    }
-  }
-
-  // Normal processing for LOP (skips limit check), or non-split PL/CL/SL
-  if (!['LOP', 'MAT', 'PAT'].includes(type) && !isCompLeave && netBalance < maxNegativeLimit) {
-    throw new Error(`Cannot apply: Net balance would be ${netBalance.toFixed(1)}, below the minimum allowed limit of ${maxNegativeLimit} days.`)
-  }
-
-  // Rule 50: Probation Check (Apply AFTER potential conversion, using system override date)
-  if (type === 'PL') {
+    // 1. Probation Rule: PL is blocked during probation
     const systemDate = await getSystemDate()
-    if (user && user.probation_end_date) {
-      const probationEnd = new Date(user.probation_end_date)
-      if (systemDate < probationEnd) {
-        throw new Error(`Privilege Leave (PL) cannot be applied during the probation period (ends ${new Date(user.probation_end_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}).`)
+    if (activeType === 'PL') {
+      let probationEnd = user.probationEndDate ? new Date(user.probationEndDate) : null
+      if (!probationEnd && user.joinDate) {
+        probationEnd = new Date(user.joinDate)
+        probationEnd.setMonth(probationEnd.getMonth() + probationMonths)
       }
-    } else if (user) {
-      const probationLimit = new Date(systemDate)
-      probationLimit.setMonth(probationLimit.getMonth() - probationMonths)
-      if (new Date(user.join_date) > probationLimit) {
-        throw new Error(`Privilege Leave (PL) cannot be applied during the ${probationMonths}-month probation period (Rule 50).`)
+      if (probationEnd && systemDate < probationEnd) {
+        const formattedEnd = probationEnd.toLocaleDateString('en-IN', {
+          day: '2-digit', month: 'short', year: 'numeric'
+        })
+        throw new Error(`Privilege Leave (PL) is blocked during probation. Your probation period ends on ${formattedEnd}.`)
       }
     }
-  }
 
-  // Use supabaseAdmin to bypass RLS for insertion
-  const { data: request, error: insertError } = await supabaseAdmin
-    .from('leave_requests')
-    .insert({
-      user_id: userId,
-      type,
-      start_date: startObj.toISOString(),
-      end_date: endObj.toISOString(),
-      half_day: halfDay,
-      reason,
-      status: "PENDING",
-      is_negative: isNegative,
-      negative_amount: negativeAmount,
-      attachment_url: attachmentUrl || null,
-      year: leaveYear,
-      created_at: (await getSystemDateTime()).toISOString(),
+    // 2. Maternity/Paternity Cap Rules
+    if (activeType === 'MAT' && days > matCap) {
+      throw new Error(`Maternity Leave (MAT) cannot exceed ${matCap} days.`)
+    }
+    if (activeType === 'PAT' && days > patCap) {
+      throw new Error(`Paternity Leave (PAT) cannot exceed ${patCap} days.`)
+    }
+
+    // 3. Friday & Monday Rule for CL
+    if (activeType === 'CL') {
+      const startDay = startObj.getUTCDay()
+      const endDay = endObj.getUTCDay()
+      
+      const hasFriday = (startDay <= 5 && endDay >= 5) || (startDay === 5)
+      const hasMonday = (startDay <= 1 && endDay >= 1) || (endDay === 1)
+      const calendarDuration = Math.round((endObj.getTime() - startObj.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      if (hasFriday && hasMonday && calendarDuration >= 3) {
+        throw new Error("Friday & Monday Rule: You cannot apply for Casual Leave (CL) on both Friday and Monday.")
+      }
+
+      for (const req of existingLeaves) {
+        if (req.status !== 'REJECTED' && req.status !== 'CANCELLED' && req.type.toUpperCase() === 'CL') {
+          const rStart = new Date(req.startDate).getUTCDay()
+          const rEnd = new Date(req.endDate).getUTCDay()
+          const rHasFriday = (rStart <= 5 && rEnd >= 5) || (rStart === 5)
+          const rHasMonday = (rStart <= 1 && rEnd >= 1) || (rEnd === 1)
+
+          if ((hasFriday && rHasMonday) || (hasMonday && rHasFriday)) {
+            throw new Error("Friday & Monday Rule: You cannot apply for Casual Leave (CL) on both Friday and Monday.")
+          }
+        }
+      }
+    }
+
+    // 4. National Holiday Adjacency Rule for CL
+    if (activeType === 'CL') {
+      const oneDay = 24 * 60 * 60 * 1000
+      const prevDateStr = new Date(startObj.getTime() - oneDay).toISOString().split('T')[0]
+      const nextDateStr = new Date(endObj.getTime() + oneDay).toISOString().split('T')[0]
+
+      if (holidayDates.has(prevDateStr) && holidayDates.has(nextDateStr)) {
+        throw new Error("National Holiday Adjacency Rule: Casual Leave (CL) is blocked if holidays sandwich the leave block on both sides.")
+      }
+
+      for (const holStr of holidayDates) {
+        const holDate = new Date(holStr)
+        const dayBeforeHol = new Date(holDate.getTime() - oneDay).toISOString().split('T')[0]
+        const dayAfterHol = new Date(holDate.getTime() + oneDay).toISOString().split('T')[0]
+
+        const curHasBefore = startObj.toISOString().split('T')[0] <= dayBeforeHol && endObj.toISOString().split('T')[0] >= dayBeforeHol
+        const curHasAfter = startObj.toISOString().split('T')[0] <= dayAfterHol && endObj.toISOString().split('T')[0] >= dayAfterHol
+
+        for (const req of existingLeaves) {
+          if (req.status !== 'REJECTED' && req.status !== 'CANCELLED' && req.type.toUpperCase() === 'CL') {
+            const reqStart = req.startDate.toISOString().split('T')[0]
+            const reqEnd = req.endDate.toISOString().split('T')[0]
+            const reqHasBefore = reqStart <= dayBeforeHol && reqEnd >= dayBeforeHol
+            const reqHasAfter = reqStart <= dayAfterHol && reqEnd >= dayAfterHol
+
+            if ((curHasBefore && reqHasAfter) || (curHasAfter && reqHasBefore)) {
+              throw new Error(`National Holiday Adjacency Rule: Casual Leave (CL) cannot sandwich the national holiday (${holStr}) on both sides.`)
+            }
+          }
+        }
+      }
+    }
+
+    // Attachment validation
+    if (attachmentUrl && attachmentUrl.trim() !== '') {
+      if (!validateAttachmentUrl(attachmentUrl)) {
+        throw new Error("Invalid attachment URL. Only secure links from Google Drive, Dropbox, SharePoint, or company.com are allowed.")
+      }
+    }
+
+    // Rule 33: Sick Leave (SL) exceeding 2 days requires document upload
+    if (type === 'SL' && days > 2) {
+      if (!attachmentUrl || attachmentUrl.trim() === '') {
+        throw new Error("Medical certificate attachment is mandatory for Sick Leave exceeding 2 days.")
+      }
+    }
+
+    // Insert leave request using Prisma
+    const request = await prisma.leaveRequest.create({
+      data: {
+        userId,
+        type: activeType,
+        startDate: startObj,
+        endDate: endObj,
+        reason,
+        isNegative,
+        negativeAmount,
+        attachmentUrl: attachmentUrl || null,
+        halfDay,
+        year: leaveYear,
+        status: 'PENDING'
+      }
     })
-    .select()
-    .single()
 
-  if (insertError) {
-    console.error('Insert Error:', insertError)
-    throw new Error(insertError.message)
-  }
+    // Log the action using Prisma
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'LEAVE_APPLIED',
+        entity: 'LeaveRequest',
+        entityId: request.id,
+        metadata: JSON.stringify({ type, startDate, endDate, days, isNegative, attachmentUrl }),
+        createdAt: await getSystemDateTime()
+      }
+    })
 
-  // Log the action using admin client
-  await supabaseAdmin.from('audit_logs').insert({
-    user_id: userId,
-    action: 'LEAVE_APPLIED',
-    entity: 'LeaveRequest',
-    entity_id: request.id,
-    metadata: JSON.stringify({ type, startDate, endDate, days, isNegative, attachmentUrl }),
-    created_at: (await getSystemDateTime()).toISOString()
-  })
+    // Fetch HR and Managers for notification
+    const adminsAndManagers = await prisma.user.findMany({
+      where: {
+        role: { in: ['ADMIN', 'MANAGER'] },
+        status: 'ACTIVE'
+      },
+      select: { email: true, communicationEmail: true }
+    })
 
-  // Fetch HR and Managers for notification (using supabaseAdmin to bypass RLS)
-  const { data: adminsAndManagers } = await supabaseAdmin
-    .from('profiles')
-    .select('email, communication_email')
-    .in('role', ['ADMIN', 'MANAGER'])
-    .eq('status', 'ACTIVE')
+    const adminEmails = adminsAndManagers.map((u: any) => (u.communicationEmail && u.communicationEmail !== 'noreply@yopmail.com') ? u.communicationEmail : u.email)
+    const fallbackUsername = user.email ? user.email.split('@')[0] : (user.name ? user.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
+    const applicantEmail = (user.communicationEmail && user.communicationEmail !== 'noreply@yopmail.com') ? user.communicationEmail : (user.email || `${fallbackUsername}@yopmail.com`)
 
-  const adminEmails = (adminsAndManagers || []).map((u: any) => u.communication_email || u.email)
-  const fallbackUsername = user?.name ? user.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply'
-  const applicantEmail = user?.communication_email || user?.email || `${fallbackUsername}@yopmail.com`
+    const formattedStartDate = startObj.toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    })
+    const formattedEndDate = endObj.toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    })
 
-  const formattedStartDate = new Date(startDate).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric'
-  })
-  const formattedEndDate = new Date(endDate).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric'
-  })
-
-  // 1. Notify Applicant
+    // 1. Notify Applicant
     await sendEmail({
       to: applicantEmail,
       subject: `Leave Application Received: ${type} (${days} days)`,
@@ -524,7 +354,7 @@ export async function submitLeaveRequest(data: {
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
     <div style="background-color: #2563eb; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL</div>
     <div style="padding: 32px;">
-      <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; margin-bottom: 16px;">Dear ${user?.name || 'Employee'},</h2>
+      <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; margin-bottom: 16px;">Dear ${user.name || 'Employee'},</h2>
       <p style="font-size: 15px; color: #334155; line-height: 1.6; margin-bottom: 24px;">
         We have successfully received your leave application. It is currently <span style="background-color: #dbeafe; color: #1e3a8a; padding: 4px 8px; border-radius: 4px; font-weight: 600;">Pending Approval</span>.
       </p>
@@ -564,14 +394,14 @@ export async function submitLeaveRequest(data: {
       `
     })
 
-  // 2. Notify HR & Managers
-  if (adminEmails.length > 0) {
-    const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
-    await Promise.all(adminEmails.map((email: string) => 
-      sendEmail({
-        to: email,
-        subject: `[Action Required] New Leave Request: ${user?.name} (${type})`,
-        html: `
+    // 2. Notify HR & Managers
+    if (adminEmails.length > 0) {
+      const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      await Promise.all(adminEmails.map((email: string) => 
+        sendEmail({
+          to: email,
+          subject: `[Action Required] New Leave Request: ${user.name} (${type})`,
+          html: `
 <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08); border: 1px solid #e2e8f0;">
     <div style="background-color: #4f46e5; color: #ffffff; padding: 24px; text-align: center;">
@@ -586,14 +416,14 @@ export async function submitLeaveRequest(data: {
       
       <div style="background-color: #f1f5f9; border-left: 4px solid #4f46e5; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
         <span style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 8px;">Action Required</span>
-        <span style="font-size: 15px; color: #1e293b; font-weight: 600; display: block;">${user?.name} &mdash; ${type} Request</span>
+        <span style="font-size: 15px; color: #1e293b; font-weight: 600; display: block;">${user.name} &mdash; ${type} Request</span>
       </div>
 
       <div style="font-size: 12px; font-weight: 700; color: #64748b; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase;">REQUEST DETAILS</div>
       <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 28px; border-collapse: separate; overflow: hidden; font-size: 14px;">
         <tr>
           <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; width: 35%;">Employee</td>
-          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${user?.name}</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;">${user.name}</td>
         </tr>
         <tr>
           <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Leave Type</td>
@@ -630,9 +460,9 @@ export async function submitLeaveRequest(data: {
   </div>
 </div>
         `
-      })
-    ))
-  }
+        })
+      ))
+    }
 
     revalidatePath("/portal")
     revalidatePath("/")
@@ -652,65 +482,65 @@ export async function submitCompOffWork(data: {
   try {
     const { userId, dateWorked, hoursWorked, reason } = data
   
-  // Verify session matches userId
-  const session = await getServerSession()
-  if (!session || session.user.id !== userId) {
-    throw new Error("Unauthorized: Session mismatch or not logged in.")
-  }
+    // Verify session matches userId
+    const session = await getServerSession()
+    if (!session || session.user.id !== userId) {
+      throw new Error("Unauthorized: Session mismatch or not logged in.")
+    }
 
-  let daysCredited = hoursWorked >= 8 ? 1.0 : (hoursWorked >= 4 ? 0.5 : 0)
+    let daysCredited = hoursWorked >= 8 ? 1.0 : (hoursWorked >= 4 ? 0.5 : 0)
 
-  // Use supabaseAdmin to bypass RLS for insertion
-  const { data: entry, error } = await supabaseAdmin
-    .from('comp_off_work_entries')
-    .insert({
-      user_id: userId,
-      date_worked: new Date(dateWorked).toISOString(),
-      hours_worked: hoursWorked,
-      reason,
-      days_credited: daysCredited,
-      status: "PENDING",
-      created_at: (await getSystemDateTime()).toISOString(),
+    // Insert comp off entry using Prisma
+    const entry = await prisma.compOffWorkEntry.create({
+      data: {
+        userId: userId,
+        dateWorked: new Date(dateWorked),
+        hoursWorked: hoursWorked,
+        reason: reason,
+        daysCredited: daysCredited,
+        status: "PENDING"
+      }
     })
-    .select()
-    .single()
 
-  if (error) {
-    console.error('CompOff Insert Error:', error)
-    throw new Error(error.message)
-  }
+    // Log the action using Prisma
+    await prisma.auditLog.create({
+      data: {
+        userId: userId,
+        action: 'COMPOFF_WORK_LOGGED',
+        entity: 'CompOffWorkEntry',
+        entityId: entry.id,
+        metadata: JSON.stringify({ dateWorked, hoursWorked, daysCredited }),
+        createdAt: await getSystemDateTime()
+      }
+    })
 
-  // Log the action using admin client
-  await supabaseAdmin.from('audit_logs').insert({
-    user_id: userId,
-    action: 'COMPOFF_WORK_LOGGED',
-    entity: 'CompOffWorkEntry',
-    entity_id: entry.id,
-    metadata: JSON.stringify({ dateWorked, hoursWorked, daysCredited }),
-    created_at: (await getSystemDateTime()).toISOString()
-  })
+    // Fetch HR and Managers for notification
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true, communicationEmail: true }
+    })
 
-  // Fetch HR and Managers for notification
-  const { data: user } = await supabaseAdmin.from('profiles').select('name, email, communication_email').eq('id', userId).single()
-  const { data: adminsAndManagers } = await supabaseAdmin
-    .from('profiles')
-    .select('email, communication_email')
-    .in('role', ['ADMIN', 'MANAGER'])
-    .eq('status', 'ACTIVE')
+    const adminsAndManagers = await prisma.user.findMany({
+      where: {
+        role: { in: ['ADMIN', 'MANAGER'] },
+        status: 'ACTIVE'
+      },
+      select: { email: true, communicationEmail: true }
+    })
 
-  const adminEmails = (adminsAndManagers || []).map((u: any) => u.communication_email || u.email)
-  const fallbackUsername = user?.name ? user.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply'
-  const applicantEmail = user?.communication_email || user?.email || `${fallbackUsername}@yopmail.com`
+    const adminEmails = adminsAndManagers.map((u: any) => (u.communicationEmail && u.communicationEmail !== 'noreply@yopmail.com') ? u.communicationEmail : u.email)
+    const fallbackUsername = user?.email ? user.email.split('@')[0] : (user?.name ? user.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
+    const applicantEmail = (user?.communicationEmail && user.communicationEmail !== 'noreply@yopmail.com') ? user.communicationEmail : (user?.email || `${fallbackUsername}@yopmail.com`)
 
-  const formattedDate = new Date(dateWorked).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric'
-  })
+    const formattedDate = new Date(dateWorked).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    })
 
-  // 1. Notify Applicant
-  await sendEmail({
-    to: applicantEmail,
-    subject: `Comp-Off Logged: ${formattedDate} (${hoursWorked} hours)`,
-    html: `
+    // 1. Notify Applicant
+    await sendEmail({
+      to: applicantEmail,
+      subject: `Comp-Off Logged: ${formattedDate} (${hoursWorked} hours)`,
+      html: `
 <div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
     <div style="background-color: #2563eb; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL</div>
@@ -748,17 +578,17 @@ export async function submitCompOffWork(data: {
     This is an automated notification from the Leave Management System (LMS).
   </div>
 </div>
-    `
-  })
+      `
+    })
 
-  // 2. Notify HR & Managers
-  if (adminEmails.length > 0) {
-    const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
-    await Promise.all(adminEmails.map((email: string) => 
-      sendEmail({
-        to: email,
-        subject: `[Action Required] New Comp-Off Request: ${user?.name}`,
-        html: `
+    // 2. Notify HR & Managers
+    if (adminEmails.length > 0) {
+      const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      await Promise.all(adminEmails.map((email: string) => 
+        sendEmail({
+          to: email,
+          subject: `[Action Required] New Comp-Off Request: ${user?.name}`,
+          html: `
 <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08); border: 1px solid #e2e8f0;">
     <div style="background-color: #4f46e5; color: #ffffff; padding: 24px; text-align: center;">
@@ -813,12 +643,11 @@ export async function submitCompOffWork(data: {
   </div>
 </div>
         `
-      })
-    ))
-  }
+      })))
+    }
 
-  revalidatePath("/portal")
-  return { success: true, entry }
+    revalidatePath("/portal")
+    return { success: true, entry }
   } catch (err: any) {
     console.error("submitCompOffWork Error:", err)
     return { success: false, error: err.message || "Failed to submit request." }

@@ -1,61 +1,36 @@
-import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import prisma from './prisma'
+import { getSessionFromCookie } from './session'
 
+// Kept for backward compatibility during refactoring
 export async function getSupabaseServer() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ulwoyxlnmtfnbfpfujtq.supabase.co',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key',
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
-    }
-  )
+  return null as any
 }
 
 export async function getServerSession(options?: any) {
   try {
-    const supabase = await getSupabaseServer()
-    const { data: { user }, error } = await supabase.auth.getUser()
-    
-    if (error || !user) {
-      console.log('getServerSession: Auth getUser failed or no user', error?.message);
-      return null;
+    const sessionData = await getSessionFromCookie()
+    if (!sessionData || !sessionData.id) {
+      return null
     }
 
-    // Query profile and department name
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*, departments(name)')
-      .eq('id', user.id)
-      .single()
+    // Query user and department name from the database using Prisma
+    const user = await prisma.user.findUnique({
+      where: { id: sessionData.id },
+      include: { department: true }
+    })
 
-    if (profileError || !profile) {
-      console.log('getServerSession: Profile fetch failed or no profile', profileError?.message);
+    if (!user || user.status !== 'ACTIVE' && user.status !== 'NOTICE_PERIOD') {
       return null
     }
 
     return {
       user: {
         id: user.id,
-        name: profile.name || user.user_metadata?.name || 'Employee',
+        name: user.name,
         email: user.email,
-        role: profile.role || user.user_metadata?.role || 'EMPLOYEE',
-        department: profile.departments?.name || 'N/A'
+        role: user.role,
+        department: user.department?.name || 'N/A'
       }
     }
   } catch (err) {
@@ -63,3 +38,4 @@ export async function getServerSession(options?: any) {
     return null
   }
 }
+

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { getServerSession } from '@/lib/supabaseServer'
 import { syncUserLedger } from '@/lib/ledgerSync'
 import { getSystemDate, getSystemDateTime } from '@/lib/systemDate'
+import prisma from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -19,33 +20,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Year is required' }, { status: 400 })
   }
 
-  const supabase = await getSupabaseServer()
   const systemDate = await getSystemDate()
 
   try {
     // 1. Check if year is already closed
-    const { data: existing } = await supabase
-      .from('leave_year_closures')
-      .select('*')
-      .eq('year', year)
-      .maybeSingle()
+    const existing = await prisma.leaveYearClosure.findFirst({
+      where: { year }
+    })
 
     if (existing) {
       return NextResponse.json({ error: `Year ${year} is already closed.` }, { status: 400 })
     }
 
     // 2. Fetch all active leave balances
-    const { data: balances, error: balError } = await supabase
-      .from('leave_balances')
-      .select('*')
+    const balances = await prisma.leaveBalance.findMany({
+      where: { year }
+    })
 
-    if (balError) throw new Error(balError.message)
-
-    const { data: maxCfConfig } = await supabase
-      .from('system_configs')
-      .select('value')
-      .eq('key', 'MAX_CARRY_FORWARD_PL')
-      .maybeSingle()
+    const maxCfConfig = await prisma.systemConfig.findUnique({
+      where: { key: 'MAX_CARRY_FORWARD_PL' }
+    })
 
     const NEXT_YEAR = year + 1
     const MAX_PL_CARRY_FORWARD = maxCfConfig ? parseFloat(maxCfConfig.value) : 30 // Rule 47
@@ -53,6 +47,7 @@ export async function POST(req: NextRequest) {
 
     const carryForwardHistoryInserts = []
     const auditLogInserts = []
+    const sysDateTime = await getSystemDateTime()
 
     for (const balance of (balances || [])) {
       const currentPl = balance.pl || 0
@@ -60,90 +55,84 @@ export async function POST(req: NextRequest) {
       const expiredPl = Math.max(0, currentPl - MAX_PL_CARRY_FORWARD)
 
       // 3. Record Carry Forward History (Rule 47)
-      const sysDateTimeStr = (await getSystemDateTime()).toISOString()
       carryForwardHistoryInserts.push({
-        user_id: balance.user_id,
-        from_year: year,
-        to_year: NEXT_YEAR,
-        leave_type: 'PL',
-        carry_forward_days: carryForwardPl,
-        expired_days: expiredPl,
-        max_carry_limit: MAX_PL_CARRY_FORWARD,
-        processed_by: sessionUser.id,
-        processed_at: sysDateTimeStr
+        userId: balance.userId,
+        fromYear: year,
+        toYear: NEXT_YEAR,
+        leaveType: 'PL',
+        carryForwardDays: carryForwardPl,
+        expiredDays: expiredPl,
+        maxCarryLimit: MAX_PL_CARRY_FORWARD,
+        processedBy: sessionUser.id,
+        processedAt: sysDateTime
       })
 
       // 4. Create the new LeaveBalance for the new year
-      const { error: insertError } = await supabase
-        .from('leave_balances')
-        .insert({
-          user_id: balance.user_id,
+      await prisma.leaveBalance.create({
+        data: {
+          userId: balance.userId,
           year: NEXT_YEAR,
-          opening_pl: carryForwardPl,
-          opening_cl: CL_ENTITLEMENT,
-          opening_comp: 0,
+          openingPl: carryForwardPl,
+          openingCl: 0,
+          openingComp: 0,
           pl: carryForwardPl,
-          cl: CL_ENTITLEMENT,
-          sl: 7, // Reset SL entitlement
+          cl: 0,
+          sl: 0, // Reset SL to 0
           comp: 0,
-          pl_accrued: 0,
-          pl_used: 0,
-          cl_used: 0,
-          sl_used: 0,
-          pl_carry_forward: carryForwardPl,
-          updated_at: sysDateTimeStr
-        })
-
-      if (insertError) throw new Error(insertError.message)
+          plAccrued: 0,
+          plUsed: 0,
+          clUsed: 0,
+          slUsed: 0,
+          plCarryForward: carryForwardPl,
+          updatedAt: sysDateTime
+        }
+      })
 
       // Sync the new year's ledger entries (opening balance, etc.)
       try {
-        await syncUserLedger(balance.user_id, NEXT_YEAR)
+        await syncUserLedger(balance.userId, NEXT_YEAR)
       } catch (syncErr: any) {
-        console.error(`Failed to sync initial ledger for user ${balance.user_id} in ${NEXT_YEAR}:`, syncErr.message)
+        console.error(`Failed to sync initial ledger for user ${balance.userId} in ${NEXT_YEAR}:`, syncErr.message)
       }
 
       // 5. Prep Audit Log
       auditLogInserts.push({
-        user_id: sessionUser.id,
+        userId: sessionUser.id,
         action: 'YEAR_CLOSED',
         entity: 'LeaveYearClosure',
-        entity_id: String(year),
+        entityId: String(year),
         metadata: JSON.stringify({
-          userId: balance.user_id,
+          userId: balance.userId,
           carriedForward: carryForwardPl,
           expired: expiredPl
         }),
-        created_at: sysDateTimeStr
+        createdAt: sysDateTime
       })
     }
 
     if (carryForwardHistoryInserts.length > 0) {
-      const { error: cfError } = await supabase.from('carry_forward_histories').insert(carryForwardHistoryInserts)
-      if (cfError) console.error("Error creating carry forward histories:", cfError)
+      await prisma.carryForwardHistory.createMany({
+        data: carryForwardHistoryInserts
+      })
     }
 
     if (auditLogInserts.length > 0) {
-      const { error: logError } = await supabase.from('audit_logs').insert(auditLogInserts)
-      if (logError) console.error("Error creating audit logs:", logError)
+      await prisma.auditLog.createMany({
+        data: auditLogInserts
+      })
     }
 
-    const sysDateTimeStr = (await getSystemDateTime()).toISOString()
-    const { data: closure, error: closureError } = await supabase
-      .from('leave_year_closures')
-      .insert({
+    const closure = await prisma.leaveYearClosure.create({
+      data: {
         year,
-        closed_by: sessionUser.id,
+        closedBy: sessionUser.id,
         status: 'CLOSED',
         remarks: remarks ?? '',
-        carry_forward_processed: true,
-        closed_at: sysDateTimeStr,
-        created_at: sysDateTimeStr
-      })
-      .select()
-      .single()
-
-    if (closureError) throw new Error(closureError.message)
+        carryForwardProcessed: true,
+        closedAt: sysDateTime,
+        createdAt: sysDateTime
+      }
+    })
 
     return NextResponse.json({ success: true, closure })
   } catch (error: any) {

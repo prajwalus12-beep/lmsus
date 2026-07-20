@@ -1,5 +1,5 @@
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { getServerSession } from '@/lib/supabaseServer'
+import prisma from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { DataTable } from './DataTable'
 import { columns, compOffColumns } from './columns'
@@ -9,48 +9,53 @@ export default async function RequestsPage() {
   const session = await getServerSession()
   if (!session?.user) redirect('/login')
 
-  const [{ data: requests }, { data: compOffs }] = await Promise.all([
-    supabaseAdmin.from('leave_requests')
-      .select('*, profiles!leave_requests_user_id_fkey(name, status, departments(name))')
-      .order('created_at', { ascending: false }),
-    supabaseAdmin.from('comp_off_work_entries')
-      .select('*, profiles!comp_off_work_entries_user_id_fkey(name, status, departments(name))')
-      .order('created_at', { ascending: false })
+  const [requests, compOffs] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      include: {
+        user: {
+          include: { department: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.compOffWorkEntry.findMany({
+      include: {
+        user: {
+          include: { department: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    })
   ]);
 
-  console.log('Admin Fetch Debug:', {
-    requestsCount: requests?.length,
-    compOffsCount: compOffs?.length
-  });
-
   const formattedRequests = (requests || []).map((req: any) => {
-    const start = new Date(req.start_date)
-    const end = new Date(req.end_date)
+    const start = new Date(req.startDate)
+    const end = new Date(req.endDate)
     const calendarDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
 
     return {
       id: req.id,
-      employeeName: req.profiles?.name || 'Unknown',
-      employeeStatus: req.profiles?.status || 'ACTIVE',
-      department: req.profiles?.departments?.name || 'N/A',
+      employeeName: req.user?.name || 'Unknown',
+      employeeStatus: req.user?.status || 'ACTIVE',
+      department: req.user?.department?.name || 'N/A',
       type: req.type,
-      startDate: new Date(req.start_date).toLocaleDateString(),
-      endDate: new Date(req.end_date).toLocaleDateString(),
+      startDate: new Date(req.startDate).toLocaleDateString(),
+      endDate: new Date(req.endDate).toLocaleDateString(),
       reason: req.reason,
       status: req.status,
-      attachmentUrl: req.attachment_url,
+      attachmentUrl: req.attachmentUrl,
       calendarDays
     }
   });
 
   const formattedCompOffs = (compOffs || []).map((co: any) => ({
     id: co.id,
-    employeeName: co.profiles?.name || 'Unknown',
-    employeeStatus: co.profiles?.status || 'ACTIVE',
-    department: co.profiles?.departments?.name || 'N/A',
-    dateWorked: new Date(co.date_worked).toLocaleDateString(),
-    hoursWorked: co.hours_worked,
-    daysCredited: co.days_credited,
+    employeeName: co.user?.name || 'Unknown',
+    employeeStatus: co.user?.status || 'ACTIVE',
+    department: co.user?.department?.name || 'N/A',
+    dateWorked: new Date(co.dateWorked).toLocaleDateString(),
+    hoursWorked: co.hoursWorked,
+    daysCredited: co.daysCredited,
     reason: co.reason,
     status: co.status
   }));

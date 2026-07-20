@@ -105,7 +105,7 @@ function TypeBadge({ type }: { type: string }) {
   if (type === "ACCRUAL")
     return <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-100">Accrual</Badge>
   if (type.startsWith("ADJ"))
-    return <Badge className="bg-teal-100 text-teal-700 border-teal-200 hover:bg-teal-100">Adj</Badge>
+    return <Badge className="bg-teal-100 text-teal-700 border-teal-200 hover:bg-teal-100">{type}</Badge>
   return <Badge variant="outline">{type}</Badge>
 }
 
@@ -484,9 +484,9 @@ export function LedgerClient({
                   <TableHead className="text-slate-600 font-semibold min-w-[220px]">Particulars</TableHead>
                   <TableHead className="text-center text-slate-600 font-semibold">Type</TableHead>
                   <TableHead className="text-right text-slate-600 font-semibold">Duration</TableHead>
-                  <TableHead className="text-right text-slate-500 font-semibold bg-amber-50/50 border-l border-amber-200 text-[10px] uppercase">Working Days</TableHead>
                   <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-l border-amber-200">CL Debit</TableHead>
                   {showClBalanceColumn && <TableHead className="text-right text-amber-700 font-semibold bg-amber-50 border-r border-amber-200">CL Bal</TableHead>}
+                  <TableHead className="text-right text-slate-500 font-semibold bg-violet-50/50 border-l border-violet-200 text-[10px] uppercase">Working Days</TableHead>
                   <TableHead className="text-right text-violet-700 font-semibold bg-violet-50 border-l border-violet-200">PL Debit</TableHead>
                   <TableHead className="text-right text-violet-700 font-semibold bg-violet-50">PL Bal</TableHead>
                 </TableRow>
@@ -535,7 +535,9 @@ export function LedgerClient({
                           <span className="text-xs text-teal-600 font-medium">Manual Adjustment</span>
                         )}
                         {isAccrual && (
-                          <span className="text-xs text-indigo-600 font-medium">Monthly PL Accrual</span>
+                          <span className="text-xs text-indigo-600 font-medium">
+                            {entry.clCredit && entry.clCredit > 0 ? "Monthly CL Accrual" : "Monthly PL Accrual"}
+                          </span>
                         )}
                         {isCompCredit && (
                           <span className="text-xs text-green-600 font-medium">Comp-Off Credited</span>
@@ -550,20 +552,13 @@ export function LedgerClient({
                         {entry.days ? fmtDays(entry.days) : "—"}
                       </TableCell>
 
-                      {/* Working Days */}
-                      <TableCell 
-                        className="text-right bg-amber-50/60 border-l border-amber-100 font-mono text-xs text-slate-500"
-                      >
-                        {entry.workingDays ?? "—"}
-                      </TableCell>
-
                       {/* CL debit */}
-                      <TableCell className="text-right bg-amber-50/60">
-                        {entry.clDebit !== null ? (
+                      <TableCell className="text-right bg-amber-50/60 border-l border-amber-100">
+                        {entry.clDebit ? (
                           <span className="font-semibold text-orange-600 tabular-nums">
                             {fmtDays(entry.clDebit)}
                           </span>
-                        ) : entry.clCredit !== null ? (
+                        ) : entry.clCredit ? (
                           <span className="font-semibold text-green-600 tabular-nums">
                             +{fmtDays(entry.clCredit)}
                           </span>
@@ -583,13 +578,20 @@ export function LedgerClient({
                         </TableCell>
                       )}
 
+                      {/* Working Days */}
+                      <TableCell 
+                        className="text-right bg-violet-50/40 border-l border-violet-100 font-mono text-xs text-slate-500"
+                      >
+                        {entry.workingDays ?? "—"}
+                      </TableCell>
+
                       {/* PL debit */}
                       <TableCell className="text-right bg-violet-50/60 border-l border-violet-100">
-                        {entry.plDebit !== null ? (
+                        {entry.plDebit ? (
                           <span className="font-semibold text-violet-600 tabular-nums">
                             {fmtDays(entry.plDebit)}
                           </span>
-                        ) : entry.plCredit !== null ? (
+                        ) : entry.plCredit ? (
                           <span className="font-semibold text-green-600 tabular-nums">
                             +{fmtDays(entry.plCredit)}
                           </span>

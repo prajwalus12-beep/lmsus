@@ -1,10 +1,11 @@
 "use server"
 
-import { getSupabaseServer, getServerSession } from "@/lib/supabaseServer"
-import { supabaseAdmin } from "@/lib/supabaseAdmin"
+import prisma from "@/lib/prisma"
+import { getServerSession } from "@/lib/supabaseServer"
 import { revalidatePath } from "next/cache"
 import { sendEmail } from "@/lib/email"
 import { getSystemDateTime } from "@/lib/systemDate"
+import bcrypt from "bcryptjs"
 
 export type CsvEmployeeRow = {
   name: string
@@ -21,11 +22,9 @@ export async function importEmployees(rows: CsvEmployeeRow[]) {
   let importedCount = 0
 
   // Fetch probation period config once
-  const { data: probationConfig } = await supabaseAdmin
-    .from('system_configs')
-    .select('value')
-    .eq('key', 'PROBATION_PERIOD_MONTHS')
-    .single()
+  const probationConfig = await prisma.systemConfig.findUnique({
+    where: { key: 'PROBATION_PERIOD_MONTHS' }
+  })
   
   const probationMonths = parseInt(probationConfig?.value || "6")
 
@@ -35,69 +34,58 @@ export async function importEmployees(rows: CsvEmployeeRow[]) {
     // 1. Find or create department
     let departmentId = null
     if (row.departmentName) {
-      const { data: depts } = await supabaseAdmin
-        .from('departments')
-        .select('id')
-        .eq('name', row.departmentName)
-        .maybeSingle()
+      let dept = await prisma.department.findUnique({
+        where: { name: row.departmentName }
+      })
 
-      if (depts) {
-        departmentId = depts.id
+      if (dept) {
+        departmentId = dept.id
       } else {
-        const { data: newDept } = await supabaseAdmin
-          .from('departments')
-          .insert({ name: row.departmentName })
-          .select('id')
-          .single()
-        if (newDept) departmentId = newDept.id
+        dept = await prisma.department.create({
+          data: { name: row.departmentName }
+        })
+        departmentId = dept.id
       }
     }
 
-    // 2. Create User in Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: row.email,
-      password: "Unique@123",
-      email_confirm: true,
-      user_metadata: { name: row.name, role: row.role || "EMPLOYEE" }
-    })
-
-    if (authError) {
-      console.error(`Error importing ${row.email}:`, authError.message)
-      continue
-    }
-
-    const userId = authData.user.id
-
-    // 3. Update the profile record (created by trigger)
+    // 2. Create User in Prisma database with hashed password
+    const hashedPassword = bcrypt.hashSync("Unique@123", 12)
     const joinDateObj = row.joinDate ? new Date(row.joinDate) : (await getSystemDateTime())
     const probationEndDate = new Date(joinDateObj)
     probationEndDate.setMonth(probationEndDate.getMonth() + probationMonths)
 
-    await supabaseAdmin
-      .from('profiles')
-      .update({
-        department_id: departmentId,
-        join_date: joinDateObj.toISOString(),
-        probation_end_date: probationEndDate.toISOString(),
-        status: 'ACTIVE'
-      })
-      .eq('id', userId)
+    const user = await prisma.user.create({
+      data: {
+        name: row.name,
+        email: row.email.toLowerCase().trim(),
+        password: hashedPassword,
+        role: row.role || "EMPLOYEE",
+        departmentId: departmentId,
+        joinDate: joinDateObj,
+        probationEndDate: probationEndDate,
+        status: 'ACTIVE',
+        communicationEmail: row.email.toLowerCase().trim()
+      }
+    })
 
-    // 4. Create default leave_balances
-    await supabaseAdmin
-      .from('leave_balances')
-      .insert({
-        user_id: userId,
+    const userId = user.id
+
+    // 3. Create default leave_balances
+    await prisma.leaveBalance.create({
+      data: {
+        userId: userId,
         year: new Date().getFullYear(),
-        opening_pl: 0,
-        opening_cl: 0,
+        openingPl: 0,
+        openingCl: 0,
+        openingComp: 0,
         pl: 0,
         cl: 0,
         sl: 0,
         comp: 0
-      })
+      }
+    })
 
-    // 5. Send Welcome Email
+    // 4. Send Welcome Email
     try {
       const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
       await sendEmail({
@@ -178,20 +166,18 @@ export async function updateEmployee(
   const session = await getServerSession()
   if (!session || session.user.role !== 'ADMIN') throw new Error("Unauthorized")
 
-  const { error } = await supabaseAdmin
-    .from('profiles')
-    .update({
+  await prisma.user.update({
+    where: { id },
+    data: {
       name: data.name,
       role: data.role,
-      department_id: data.departmentId,
+      departmentId: data.departmentId || null,
       status: data.status,
-      last_working_day: data.lastWorkingDay ? new Date(data.lastWorkingDay).toISOString() : null,
-      probation_end_date: data.probationEndDate ? new Date(data.probationEndDate).toISOString() : null,
-      updated_at: (await getSystemDateTime()).toISOString()
-    })
-    .eq('id', id)
-
-  if (error) throw new Error(error.message)
+      lastWorkingDay: data.lastWorkingDay ? new Date(data.lastWorkingDay) : null,
+      probationEndDate: data.probationEndDate ? new Date(data.probationEndDate) : null,
+      updatedAt: await getSystemDateTime()
+    }
+  })
 
   revalidatePath("/team")
   return { success: true }
@@ -205,48 +191,41 @@ export async function saveProratedBalances(
   if (!session || session.user.role !== 'ADMIN') throw new Error("Unauthorized")
   const adminUser = session.user as any
 
-  const { data: latestBalance } = await supabaseAdmin
-    .from('leave_balances')
-    .select('id')
-    .eq('user_id', userId)
-    .order('year', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const latestBalance = await prisma.leaveBalance.findFirst({
+    where: { userId },
+    orderBy: { year: 'desc' }
+  })
 
   if (!latestBalance) throw new Error("Leave balance record not found")
 
-  const { error: updateError } = await supabaseAdmin
-    .from('leave_balances')
-    .update({
+  await prisma.leaveBalance.update({
+    where: { id: latestBalance.id },
+    data: {
       pl: balances.pl,
       cl: balances.cl,
       sl: balances.sl,
-      opening_pl: balances.pl,
-      opening_cl: balances.cl,
-      updated_at: (await getSystemDateTime()).toISOString()
-    })
-    .eq('id', latestBalance.id)
-
-  if (updateError) throw new Error(updateError.message)
+      openingPl: balances.pl,
+      openingCl: balances.cl,
+      updatedAt: await getSystemDateTime()
+    }
+  })
 
   // Log the adjustment in AuditLog
-  const { error: auditError } = await supabaseAdmin
-    .from('audit_logs')
-    .insert({
-      user_id: adminUser.id,
+  await prisma.auditLog.create({
+    data: {
+      userId: adminUser.id,
       action: "PRORATE_LEAVE_ADJUSTMENT",
       entity: "LeaveBalance",
-      entity_id: userId,
+      entityId: userId,
       metadata: JSON.stringify({
         adminName: adminUser.name,
         pl: balances.pl,
         cl: balances.cl,
         sl: balances.sl,
       }),
-      created_at: (await getSystemDateTime()).toISOString()
-    })
-
-  if (auditError) console.error("Error creating audit log:", auditError)
+      createdAt: await getSystemDateTime()
+    }
+  })
 
   revalidatePath("/team")
   return { success: true }
@@ -258,45 +237,27 @@ export async function deleteEmployee(userId: string) {
     return { success: false, error: "Unauthorized: Only administrators can delete employees." }
   }
 
-  // 1. Nullify approved_by_id references to prevent foreign key errors
-  await supabaseAdmin
-    .from('leave_requests')
-    .update({ approved_by_id: null })
-    .eq('approved_by_id', userId)
+  // 1. Nullify approvedById references in leave requests and comp off entries
+  await prisma.leaveRequest.updateMany({
+    where: { approvedById: userId },
+    data: { approvedById: null }
+  })
 
-  await supabaseAdmin
-    .from('comp_off_work_entries')
-    .update({ approved_by_id: null })
-    .eq('approved_by_id', userId)
+  await prisma.compOffWorkEntry.updateMany({
+    where: { approvedById: userId },
+    data: { approvedById: null }
+  })
 
   // 2. Delete Audit Logs associated with the user
-  await supabaseAdmin
-    .from('audit_logs')
-    .delete()
-    .eq('user_id', userId)
+  await prisma.auditLog.deleteMany({
+    where: { userId }
+  })
 
-  // 3. Delete the profile record from public.profiles
-  // This will cascade delete linked tables (leave_balances, leave_requests, leave_ledger_entries, adjustments, etc.)
-  const { error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .delete()
-    .eq('id', userId)
-
-  if (profileError) {
-    console.error("Profile deletion error:", profileError.message)
-  }
-
-  // 4. Delete the user from Supabase Auth
-  const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId)
-  if (authError) {
-    console.error("Auth user deletion error:", authError.message)
-    // If the auth user doesn't exist anymore but profile was deleted, we still want to report success
-    if (authError.message.includes("User not found") === false) {
-      throw new Error(authError.message)
-    }
-  }
+  // 3. Delete the user from database (cascades automatically to leave_balances etc. if defined)
+  await prisma.user.delete({
+    where: { id: userId }
+  })
 
   revalidatePath("/team")
   return { success: true }
 }
-
