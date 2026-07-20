@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabaseAdmin"
+import prisma from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
+import { encryptSession } from "@/lib/session"
 
 export async function POST(request: Request) {
   try {
@@ -10,14 +11,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email is required." }, { status: 400 })
     }
 
-    // 1. Verify if the email is registered in profiles
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('name')
-      .eq('email', email)
-      .maybeSingle()
+    // 1. Verify if the email is registered in DB
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+      select: { id: true, name: true, email: true, communicationEmail: true }
+    })
 
-    if (profileError || !profile) {
+    if (!user) {
       // Prevent user enumeration by sending a generic successful response
       return NextResponse.json({ 
         status: "SUCCESS", 
@@ -25,25 +25,17 @@ export async function POST(request: Request) {
       })
     }
 
-    // 2. Generate Supabase recovery link
-    const origin = new URL(request.url).origin
-    const { data, error: authError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email,
-      options: {
-        redirectTo: `${origin}/login/reset-password`,
-      }
+    // 2. Generate encrypted reset token (expires in 1 hour)
+    const token = encryptSession({
+      email: user.email,
+      exp: Date.now() + 60 * 60 * 1000 // 1 hour
     })
 
-    if (authError || !data?.properties?.action_link) {
-      console.error("Link generation error:", authError)
-      return NextResponse.json({ error: authError?.message || "Failed to generate reset link." }, { status: 500 })
-    }
-
-    const resetLink = data.properties.action_link
+    const origin = new URL(request.url).origin
+    const resetLink = `${origin}/login/reset-password?token=${encodeURIComponent(token)}`
 
     // 3. Format professional HTML email
-    const name = profile.name || "User"
+    const name = user.name || "User"
     const htmlContent = `
 <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08); border: 1px solid #e2e8f0;">
@@ -64,7 +56,7 @@ export async function POST(request: Request) {
       </div>
 
       <p style="font-size: 13px; color: #64748b; line-height: 1.5; margin-bottom: 12px;">
-        This password reset link will expire in 24 hours. If you did not request this, you can safely ignore this email — your password will remain unchanged.
+        This password reset link will expire in 1 hour. If you did not request this, you can safely ignore this email — your password will remain unchanged.
       </p>
 
       <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
@@ -81,9 +73,13 @@ export async function POST(request: Request) {
 </div>
 `
 
+    const targetEmail = (user.communicationEmail && user.communicationEmail !== 'noreply@yopmail.com')
+      ? user.communicationEmail
+      : user.email
+
     // 4. Send email using SMTP helper
     await sendEmail({
-      to: email,
+      to: targetEmail,
       subject: `Reset your LMS account password`,
       html: htmlContent
     })

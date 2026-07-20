@@ -1,45 +1,57 @@
-import { getSupabaseServer } from './supabaseServer'
-import { supabaseAdmin } from './supabaseAdmin'
+import prisma from './prisma'
 import { calculateRequestedDays } from './leaveCalculator'
 import { getSystemDate } from './systemDate'
 
 export async function syncUserLedger(userId: string, year: number = 2026) {
   const systemDate = await getSystemDate()
-  const startOfYear = `${year}-01-01T00:00:00.000Z`
-  const endOfYear = `${year}-12-31T23:59:59.999Z`
-
-  const supabase = supabaseAdmin // Use admin to ensure full access
+  const startOfYear = new Date(Date.UTC(year, 0, 1))
+  const endOfYear = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999))
 
   const [
-    { data: user },
-    { data: holidays },
-    { data: sandwichConfig }
+    user,
+    holidays,
+    sandwichConfig
   ] = await Promise.all([
-    supabase.from('profiles').select('*, leave_balances(*)').eq('id', userId).single(),
-    supabase.from('holidays').select('*').gte('date', startOfYear).lte('date', endOfYear),
-    supabase.from('system_configs').select('value').eq('key', 'weekend_sandwich_rule').single()
+    prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        balances: {
+          where: { year }
+        }
+      }
+    }),
+    prisma.holiday.findMany({
+      where: {
+        date: {
+          gte: startOfYear,
+          lte: endOfYear
+        }
+      }
+    }),
+    prisma.systemConfig.findUnique({ where: { key: 'weekend_sandwich_rule' } })
   ])
 
   if (!user) return
-  const balance = Array.isArray(user.leave_balances) 
-    ? user.leave_balances.find((b: any) => b.year === year) 
-    : (user.leave_balances && user.leave_balances.year === year ? user.leave_balances : null)
+  const balance = user.balances[0]
   if (!balance) return
 
-  const holidayDates = new Set((holidays || []).map((h: any) => h.date.split('T')[0]))
+  const holidayDates = new Set(holidays.map((h: any) => h.date.toISOString().split('T')[0]))
   const isSandwichEnabled = sandwichConfig?.value === 'true'
 
-  // Clear existing ledger entries for this user and year
-  await supabase
-    .from('leave_ledger_entries')
-    .delete()
-    .eq('user_id', user.id)
-    .gte('date', startOfYear)
-    .lte('date', endOfYear)
+  // Clear existing ledger entries for this user and year using Prisma
+  await prisma.leaveLedgerEntry.deleteMany({
+    where: {
+      userId: user.id,
+      date: {
+        gte: startOfYear,
+        lte: endOfYear
+      }
+    }
+  })
 
-  let clBal = balance.opening_cl || 0
-  let plBal = balance.opening_pl || 0
-  let compBal = balance.opening_comp || 0
+  let clBal = balance.openingCl || 0
+  let plBal = balance.openingPl || 0
+  let compBal = balance.openingComp || 0
   
   let plAccrued = 0
   let plUsed = 0
@@ -47,65 +59,75 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
   let slUsed = 0
 
   const [
-    { data: approvedLeaves },
-    { data: adjustments },
-    { data: compOffCredits }
+    approvedLeaves,
+    adjustments,
+    compOffCredits
   ] = await Promise.all([
-    supabase.from('leave_requests')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', 'HR_APPROVED')
-      .gte('start_date', startOfYear)
-      .lte('start_date', endOfYear)
-      .order('start_date', { ascending: true }),
-    supabase.from('leave_balance_adjustments')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('effective_year', year)
-      .order('created_at', { ascending: true }),
-    supabase.from('comp_off_work_entries')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', 'APPROVED')
-      .gte('date_worked', startOfYear)
-      .lte('date_worked', endOfYear)
-      .order('date_worked', { ascending: true })
+    prisma.leaveRequest.findMany({
+      where: {
+        userId: user.id,
+        status: 'HR_APPROVED',
+        startDate: {
+          gte: startOfYear,
+          lte: endOfYear
+        }
+      },
+      orderBy: { startDate: 'asc' }
+    }),
+    prisma.leaveBalanceAdjustment.findMany({
+      where: {
+        userId: user.id,
+        effectiveYear: year
+      },
+      orderBy: { createdAt: 'asc' }
+    }),
+    prisma.compOffWorkEntry.findMany({
+      where: {
+        userId: user.id,
+        status: 'APPROVED',
+        dateWorked: {
+          gte: startOfYear,
+          lte: endOfYear
+        }
+      },
+      orderBy: { dateWorked: 'asc' }
+    })
   ])
 
   const ledgerEntries: any[] = []
 
   // Add Opening Entry
   ledgerEntries.push({
-    user_id: user.id,
+    userId: user.id,
     date: startOfYear,
     type: 'OPENING',
     description: `Opening Balance — 1 Jan ${year}`,
-    cl_credit: balance.opening_cl || 0,
-    pl_credit: balance.opening_pl || 0,
-    cl_balance: clBal,
-    pl_balance: plBal,
-    is_opening: true,
-    is_adjustment: false,
-    is_closing: false,
-    working_days: 0
+    clCredit: balance.openingCl || 0,
+    plCredit: balance.openingPl || 0,
+    clBalance: clBal,
+    plBalance: plBal,
+    isOpening: true,
+    isAdjustment: false,
+    isClosing: false,
+    workingDays: 0
   })
 
   const events = [
-    ...(approvedLeaves || []).map((l: any) => ({ kind: 'leave' as const, date: new Date(l.start_date), data: l })),
-    ...(adjustments || []).map((a: any) => ({ kind: 'adj' as const, date: new Date(a.created_at), data: a })),
-    ...(compOffCredits || []).map((c: any) => ({ kind: 'comp_credit' as const, date: new Date(c.date_worked), data: c }))
+    ...approvedLeaves.map((l: any) => ({ kind: 'leave' as const, date: new Date(l.startDate), data: l })),
+    ...adjustments.map((a: any) => ({ kind: 'adj' as const, date: new Date(a.createdAt), data: a })),
+    ...compOffCredits.map((c: any) => ({ kind: 'comp_credit' as const, date: new Date(c.dateWorked), data: c }))
   ].sort((a, b) => a.date.getTime() - b.date.getTime())
 
   for (const ev of events) {
     if (ev.kind === 'leave') {
       const leave = ev.data
       const { days, effectiveType } = calculateRequestedDays(
-        new Date(leave.start_date),
-        new Date(leave.end_date),
+        new Date(leave.startDate),
+        new Date(leave.endDate),
         holidayDates,
         isSandwichEnabled,
         leave.type,
-        leave.half_day !== 'NONE'
+        leave.halfDay !== 'NONE'
       )
 
       if (days === 0) continue
@@ -118,97 +140,115 @@ export async function syncUserLedger(userId: string, year: number = 2026) {
       else continue
 
       ledgerEntries.push({
-        user_id: user.id,
-        date: leave.start_date,
+        userId: user.id,
+        date: leave.startDate,
         type: effectiveType,
         description: leave.reason,
-        start_date: leave.start_date,
-        end_date: leave.end_date,
+        startDate: leave.startDate,
+        endDate: leave.endDate,
         days,
-        cl_debit: clDebit,
-        pl_debit: plDebit,
-        cl_balance: clBal,
-        pl_balance: plBal,
-        is_opening: false,
-        is_adjustment: false,
-        is_closing: false
+        clDebit: clDebit,
+        plDebit: plDebit,
+        clBalance: clBal,
+        plBalance: plBal,
+        isOpening: false,
+        isAdjustment: false,
+        isClosing: false
       })
     } else if (ev.kind === 'comp_credit') {
       const credit = ev.data
-      compBal += credit.days_credited
+      compBal += credit.daysCredited
       ledgerEntries.push({
-        user_id: user.id,
-        date: credit.date_worked,
+        userId: user.id,
+        date: credit.dateWorked,
         type: 'COMP_CREDIT',
         description: `Comp-Off Earned: ${credit.reason}`,
-        days: credit.days_credited,
-        cl_balance: clBal,
-        pl_balance: plBal,
-        is_opening: false,
-        is_adjustment: false,
-        is_closing: false
+        days: credit.daysCredited,
+        clBalance: clBal,
+        plBalance: plBal,
+        isOpening: false,
+        isAdjustment: false,
+        isClosing: false
       })
     } else {
       const adj = ev.data
       let clDebit = null, clCredit = null, plDebit = null, plCredit = null
 
-      if (adj.leave_type === 'CL') {
+      if (adj.leaveType === 'CL') {
         if (adj.amount < 0) { clDebit = Math.abs(adj.amount); clUsed += clDebit; }
         else { clCredit = adj.amount }
         clBal += adj.amount
-      } else if (adj.leave_type === 'PL') {
+      } else if (adj.leaveType === 'PL') {
         if (adj.amount < 0) { plDebit = Math.abs(adj.amount); plUsed += plDebit; }
-        else { plCredit = adj.amount; if (adj.adjustment_type === 'MONTHLY_ACCRUAL') plAccrued += adj.amount; }
+        else { plCredit = adj.amount; if (adj.adjustmentType === 'MONTHLY_ACCRUAL') plAccrued += adj.amount; }
         plBal += adj.amount
-      } else if (adj.leave_type === 'COMP') {
+      } else if (adj.leaveType === 'COMP') {
         compBal += adj.amount
       }
 
+      let workingDays: number | null = null
+      if (adj.leaveType === 'PL' && adj.adjustmentType === 'MONTHLY_ACCRUAL') {
+        const match = adj.reason.match(/Monthly PL Accrual \((\d+)\s+working days/)
+        if (match) {
+          workingDays = parseInt(match[1])
+        }
+      }
+
       ledgerEntries.push({
-        user_id: user.id,
-        date: adj.created_at,
-        type: adj.adjustment_type === 'MONTHLY_ACCRUAL' ? 'ACCRUAL' : `ADJ-${adj.leave_type}`,
+        userId: user.id,
+        date: adj.createdAt,
+        type: adj.adjustmentType === 'MONTHLY_ACCRUAL' ? 'ACCRUAL' : `ADJ-${adj.leaveType}`,
         description: adj.reason,
         days: Math.abs(adj.amount),
-        cl_debit: clDebit,
-        cl_credit: clCredit,
-        cl_balance: clBal,
-        pl_balance: plBal,
-        is_opening: false,
-        is_adjustment: true,
-        is_closing: false
+        clDebit: clDebit,
+        clCredit: clCredit,
+        clBalance: clBal,
+        plBalance: plBal,
+        workingDays: workingDays,
+        isOpening: false,
+        isAdjustment: true,
+        isClosing: false
       })
     }
   }
 
   // Add Closing Entry
   ledgerEntries.push({
-    user_id: user.id,
-    date: systemDate.toISOString(),
+    userId: user.id,
+    date: systemDate,
     type: 'CLOSING',
     description: 'Closing Balance (as of today)',
-    cl_balance: clBal,
-    pl_balance: plBal,
-    is_opening: false,
-    is_adjustment: false,
-    is_closing: true
+    clBalance: clBal,
+    plBalance: plBal,
+    isOpening: false,
+    isAdjustment: false,
+    isClosing: true
   })
 
-  await supabase.from('leave_ledger_entries').insert(ledgerEntries)
+  // Insert ledger entries in bulk
+  if (ledgerEntries.length > 0) {
+    await prisma.leaveLedgerEntry.createMany({
+      data: ledgerEntries
+    })
+  }
 
-  // Sync master balance table with all components for the specified year
-  await supabase
-    .from('leave_balances')
-    .update({
+  // Update balances
+  await prisma.leaveBalance.update({
+    where: {
+      userId_year: {
+        userId: user.id,
+        year: year
+      }
+    },
+    data: {
       pl: plBal,
       cl: clBal,
       comp: compBal,
-      pl_accrued: plAccrued,
-      pl_used: plUsed,
-      cl_used: clUsed,
-      sl_used: slUsed,
-      updated_at: systemDate.toISOString()
-    })
-    .eq('user_id', user.id)
-    .eq('year', year)
+      plAccrued: plAccrued,
+      plUsed: plUsed,
+      clUsed: clUsed,
+      slUsed: slUsed,
+      updatedAt: systemDate
+    }
+  })
 }

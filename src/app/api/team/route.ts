@@ -1,77 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import bcrypt from 'bcryptjs'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
   const sessionUser = session?.user as any
   if (sessionUser?.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { name, email, password, role, departmentId, joinDate, openingPl, openingCl } = await req.json()
-  const finalPassword = password || 'Unique@123'
-
-  // 1. Create User in Supabase Auth
-  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password: finalPassword,
-    email_confirm: true,
-    user_metadata: { name, role: role || "EMPLOYEE" }
-  })
-
-  if (authError) {
-    return NextResponse.json({ error: authError.message }, { status: 400 })
-  }
-
-  const userId = authData.user.id
-
-  // 2. Update the profile record (created by trigger) with department and joinDate
-  const { error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .update({
-      department_id: departmentId || null,
-      join_date: joinDate ? new Date(joinDate).toISOString() : new Date().toISOString(),
-      status: 'ACTIVE'
-    })
-    .eq('id', userId)
-
-  if (profileError) {
-    return NextResponse.json({ error: profileError.message }, { status: 500 })
-  }
-
-  // 3. Create default leave_balances
-  const parsedPl = parseFloat(openingPl) || 0
-  const parsedCl = parseFloat(openingCl) || 0
-
-  const { error: balanceError } = await supabaseAdmin
-    .from('leave_balances')
-    .insert({
-      user_id: userId,
-      year: new Date().getFullYear(),
-      opening_pl: parsedPl,
-      opening_cl: parsedCl,
-      pl: parsedPl,
-      cl: parsedCl,
-      sl: 7,
-      comp: 0,
-      pl_accrued: 0,
-      pl_used: 0,
-      cl_used: 0,
-      sl_used: 0,
-      pl_carry_forward: 0
-    })
-
-  if (balanceError) {
-    return NextResponse.json({ error: balanceError.message }, { status: 500 })
-  }
-
-  // 4. Send Confirmation / Welcome Email
   try {
-    const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
-    await sendEmail({
-      to: email,
-      subject: `Welcome to the Leave Management System (LMS) - Account Created`,
-      html: `
+    const { name, email, password, role, departmentId, joinDate, openingPl, openingCl } = await req.json()
+    const finalPassword = password || 'Unique@123'
+    const hashedPassword = bcrypt.hashSync(finalPassword, 12)
+
+    // 1. Create User in Database via Prisma
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email: email.toLowerCase().trim(),
+        password: hashedPassword,
+        role: role || "EMPLOYEE",
+        departmentId: departmentId || null,
+        joinDate: joinDate ? new Date(joinDate) : new Date(),
+        status: 'ACTIVE',
+        communicationEmail: email.toLowerCase().trim()
+      }
+    })
+
+    const userId = user.id
+
+    // 2. Create default leave_balances
+    const parsedPl = parseFloat(openingPl) || 0
+    const parsedCl = parseFloat(openingCl) || 0
+
+    await prisma.leaveBalance.create({
+      data: {
+        userId: userId,
+        year: new Date().getFullYear(),
+        openingPl: parsedPl,
+        openingCl: parsedCl,
+        pl: parsedPl,
+        cl: parsedCl,
+        sl: 0,
+        comp: 0,
+        plAccrued: 0,
+        plUsed: 0,
+        clUsed: 0,
+        slUsed: 0,
+        plCarryForward: 0
+      }
+    })
+
+    // 3. Send Confirmation / Welcome Email
+    try {
+      const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      await sendEmail({
+        to: email,
+        subject: `Welcome to the Leave Management System (LMS) - Account Created`,
+        html: `
 <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08); border: 1px solid #e2e8f0;">
     <div style="background-color: #4f46e5; color: #ffffff; padding: 28px; text-align: center;">
@@ -120,10 +107,14 @@ export async function POST(req: NextRequest) {
   </div>
 </div>
     `
-    })
-  } catch (emailErr) {
-    console.error("Failed to send welcome email:", emailErr)
-  }
+      })
+    } catch (emailErr) {
+      console.error("Failed to send welcome email:", emailErr)
+    }
 
-  return NextResponse.json({ id: userId, name, email, role })
+    return NextResponse.json({ id: userId, name, email, role })
+  } catch (error: any) {
+    console.error("Error creating employee:", error)
+    return NextResponse.json({ error: error.message || 'Failed to create employee' }, { status: 400 })
+  }
 }

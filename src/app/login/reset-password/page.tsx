@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { supabase } from "@/lib/supabaseClient"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,36 +14,27 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [token, setToken] = useState<string | null>(null)
 
   useEffect(() => {
-    const handleHash = async () => {
-      try {
-        const hash = window.location.hash
-        if (hash) {
-          const params = new URLSearchParams(hash.substring(1))
-          const accessToken = params.get("access_token")
-          const refreshToken = params.get("refresh_token")
-          if (accessToken && refreshToken) {
-            const { error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            })
-            if (error) {
-              console.error("Error setting session from URL hash:", error.message)
-            } else {
-              toast.success("Reset session established successfully.")
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Error parsing URL hash:", err)
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      const t = urlParams.get("token")
+      setToken(t)
+      if (!t) {
+        toast.error("Invalid password reset request. No reset token was found in the link.")
       }
+    } catch (err) {
+      console.error("Error parsing URL params:", err)
     }
-    handleHash()
   }, [])
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!token) {
+      toast.error("No valid reset token found. Please request a new link.")
+      return
+    }
     if (password !== confirmPassword) {
       toast.error("Passwords do not match.")
       return
@@ -56,17 +46,22 @@ export default function ResetPasswordPage() {
 
     setLoading(true)
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: password,
+      const res = await fetch("/api/auth/confirm-reset-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token, password }),
       })
 
-      if (error) {
-        toast.error(error.message)
-      } else {
-        toast.success("Password has been successfully updated! Please log in with your new password.")
-        router.push("/login")
-        router.refresh()
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update password.")
       }
+
+      toast.success("Password has been successfully updated! Please log in with your new password.")
+      router.push("/login")
+      router.refresh()
     } catch (err: any) {
       toast.error(err?.message || "An error occurred. Please try again.")
     } finally {
@@ -163,7 +158,7 @@ export default function ResetPasswordPage() {
             <Button
               type="submit"
               className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
-              disabled={loading}
+              disabled={loading || !token}
             >
               {loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving password...</>

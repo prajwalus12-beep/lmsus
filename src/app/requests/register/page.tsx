@@ -1,5 +1,5 @@
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { getServerSession } from '@/lib/supabaseServer'
+import prisma from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { calculateRequestedDays } from '@/lib/leaveCalculator'
 import { RegisterClient } from './RegisterClient'
@@ -13,59 +13,65 @@ export default async function LeaveRegisterPage() {
   const sessionUser = session.user as any
   const isAdmin = sessionUser.role === 'ADMIN' || sessionUser.role === 'MANAGER'
   
-  // Use supabaseAdmin to bypass RLS
-  let query = supabaseAdmin
-    .from('leave_requests')
-    .select('*, profiles!leave_requests_user_id_fkey(name, departments(name)), approved_by:profiles!leave_requests_approved_by_id_fkey(name)')
-    .order('created_at', { ascending: false })
-
+  // Use Prisma to query leave requests
+  let whereClause: any = {}
   if (sessionUser.role !== 'ADMIN' && sessionUser.role !== 'MANAGER') {
-    query = query.eq('user_id', sessionUser.id)
+    whereClause.userId = sessionUser.id
   }
 
   const [
-    { data: requests, error },
-    { data: allDepts, error: deptError }
+    requests,
+    allDepts,
+    holidays,
+    config
   ] = await Promise.all([
-    query,
-    supabaseAdmin.from('departments').select('name').order('name')
+    prisma.leaveRequest.findMany({
+      where: whereClause,
+      include: {
+        user: {
+          include: { department: true }
+        },
+        approvedBy: true
+      },
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.department.findMany({
+      select: { name: true },
+      orderBy: { name: 'asc' }
+    }),
+    prisma.holiday.findMany({
+      select: { date: true }
+    }),
+    prisma.systemConfig.findUnique({
+      where: { key: 'weekend_sandwich_rule' }
+    })
   ])
 
-  if (error) {
-    console.error("Error fetching leave requests:", error)
-  }
-  if (deptError) {
-    console.error("Error fetching departments:", deptError)
-  }
-
-  // Fetch holidays and config once for duration calculation
-  const { data: holidays } = await supabaseAdmin.from('holidays').select('date')
-  const holidayDates = new Set((holidays || []).map((h: any) => h.date.split('T')[0]))
-  const { data: config } = await supabaseAdmin.from('system_configs').select('value').eq('key', 'weekend_sandwich_rule').maybeSingle()
+  const holidayDates = new Set((holidays || []).map((h: any) => h.date.toISOString().split('T')[0]))
   const isSandwichEnabled = config?.value === 'true'
 
   const formattedData = (requests || []).map((req: any) => {
     const { days, effectiveType } = calculateRequestedDays(
-      new Date(req.start_date),
-      new Date(req.end_date),
+      new Date(req.startDate),
+      new Date(req.endDate),
       holidayDates,
       isSandwichEnabled,
       req.type,
-      req.half_day !== 'NONE'
+      req.halfDay !== 'NONE'
     )
 
     return {
       id: req.id,
-      employeeName: req.profiles?.name || 'Unknown',
-      department: req.profiles?.departments?.name || 'N/A',
+      employeeName: req.user?.name || 'Unknown',
+      department: req.user?.department?.name || 'N/A',
       type: effectiveType,
-      startDate: req.start_date,
-      endDate: req.end_date,
+      startDate: req.startDate,
+      endDate: req.endDate,
       duration: days,
-      appliedAt: req.created_at,
+      appliedAt: req.createdAt,
       status: req.status,
-      approvedAt: req.approved_at || null,
-      approvedByName: req.approved_by?.name || '—'
+      approvedAt: req.approvedAt || null,
+      approvedByName: req.approvedBy?.name || '—'
     }
   })
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { getServerSession } from '@/lib/supabaseServer'
+import prisma from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,40 +8,40 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession()
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   
-  const supabase = await getSupabaseServer()
-  const { data: user, error } = await supabase
-    .from('profiles')
-    .select('communication_email, status')
-    .eq('id', session.user.id)
-    .single()
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true, communicationEmail: true, status: true }
+  })
   
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 })
   }
 
+  const displayEmail = (user.communicationEmail && user.communicationEmail !== 'noreply@yopmail.com')
+    ? user.communicationEmail
+    : user.email
+
   return NextResponse.json({ 
-    communicationEmail: user?.communication_email,
-    status: user?.status 
+    communicationEmail: displayEmail,
+    status: user.status 
   })
 }
 
 export async function PUT(req: NextRequest) {
-  const supabase = await getSupabaseServer()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const session = await getServerSession()
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { communicationEmail } = await req.json()
   
-  const { error } = await supabaseAdmin
-    .from('profiles')
-    .update({ communication_email: communicationEmail })
-    .eq('id', user.id)
-  
-  if (error) {
+  try {
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: { communicationEmail: communicationEmail }
+    })
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
-  return NextResponse.json({ success: true })
 }

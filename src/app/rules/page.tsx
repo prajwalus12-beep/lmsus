@@ -1,6 +1,7 @@
-import { getServerSession, getSupabaseServer } from "@/lib/supabaseServer";
+import { getServerSession } from "@/lib/supabaseServer";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import prisma from "@/lib/prisma";
 import { 
   BookOpen, 
   CalendarDays, 
@@ -33,8 +34,7 @@ export default async function LeaveRulesPage() {
     );
   }
 
-  const supabase = await getSupabaseServer();
-  const { data: configs } = await supabase.from('system_configs').select('*');
+  const configs = await prisma.systemConfig.findMany();
   const configMap = Object.fromEntries((configs || []).map((c: any) => [c.key, c.value]));
 
   const accrualRate = configMap['ACCRUAL_RATE_PL'] || "1.5";

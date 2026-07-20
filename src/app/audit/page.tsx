@@ -1,7 +1,7 @@
 import { getServerSession } from '@/lib/supabaseServer'
 import { redirect } from 'next/navigation'
 import { AuditClient } from './AuditClient'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 
 export default async function AuditPage() {
   const session = await getServerSession()
@@ -11,15 +11,13 @@ export default async function AuditPage() {
     redirect('/')
   }
 
-  const { data: logs, error } = await supabaseAdmin
-    .from('audit_logs')
-    .select('*, profiles(name, role, status)')
-    .order('created_at', { ascending: false })
-    .limit(500)
-
-  if (error) {
-    console.error("Error fetching audit logs:", error)
-  }
+  const logs = await prisma.auditLog.findMany({
+    include: {
+      user: true
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 500
+  })
 
   const mappedLogs = (logs || []).map((log: any) => {
     let parsedMetadata = null
@@ -33,16 +31,16 @@ export default async function AuditPage() {
 
     return {
       id: log.id,
-      userName: log.profiles?.name || 'System',
-      userRole: log.profiles?.role || 'SYSTEM',
-      userStatus: log.profiles?.status || 'ACTIVE',
+      userName: log.user?.name || 'System',
+      userRole: log.user?.role || 'SYSTEM',
+      userStatus: log.user?.status || 'ACTIVE',
       action: log.action,
       entity: log.entity,
-      entityId: log.entity_id,
-      oldValue: log.old_value,
-      newValue: log.new_value,
+      entityId: log.entityId,
+      oldValue: log.oldValue,
+      newValue: log.newValue,
       metadata: parsedMetadata,
-      createdAt: new Date(log.created_at).toISOString()
+      createdAt: log.createdAt.toISOString()
     }
   })
 

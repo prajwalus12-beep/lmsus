@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer'
-import { createClient } from '@supabase/supabase-js'
+import prisma from './prisma'
 
 const port = parseInt(process.env.SMTP_PORT || '587')
 const transporter = nodemailer.createTransport({
@@ -15,19 +15,11 @@ const transporter = nodemailer.createTransport({
 /** Read EMAIL_ENABLED from system_configs. Defaults to true if the key is missing. */
 async function isEmailEnabled(): Promise<boolean> {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ulwoyxlnmtfnbfpfujtq.supabase.co',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-    )
-    const { data } = await supabase
-      .from('system_configs')
-      .select('value')
-      .eq('key', 'EMAIL_ENABLED')
-      .maybeSingle()
-    // If the key doesn't exist yet, treat as enabled (opt-in default)
-    return data?.value !== 'false'
+    const config = await prisma.systemConfig.findUnique({
+      where: { key: 'EMAIL_ENABLED' }
+    })
+    return config?.value !== 'false'
   } catch {
-    // On any error, fall through and allow sending
     return true
   }
 }

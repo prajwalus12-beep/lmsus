@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
+import { getServerSession } from '@/lib/supabaseServer'
+import prisma from '@/lib/prisma'
 
 // GET /api/leave/config?key=SHOW_CL_BALANCE_TO_EMPLOYEE
 export async function GET(req: NextRequest) {
@@ -8,21 +9,17 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const key = searchParams.get('key')
-  const supabase = await getSupabaseServer()
 
   if (key) {
-    const { data: config } = await supabase
-      .from('system_configs')
-      .select('value')
-      .eq('key', key)
-      .maybeSingle()
+    const config = await prisma.systemConfig.findUnique({
+      where: { key }
+    })
     return NextResponse.json({ key, value: config?.value ?? null })
   }
 
-  const { data: all } = await supabase
-    .from('system_configs')
-    .select('*')
-    .order('key', { ascending: true })
+  const all = await prisma.systemConfig.findMany({
+    orderBy: { key: 'asc' }
+  })
 
   return NextResponse.json(all || [])
 }
@@ -44,37 +41,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'key and value are required' }, { status: 400 })
   }
 
-  const supabase = await getSupabaseServer()
-
-  // In Supabase, we can upsert by key
-  const { data: config, error: upsertError } = await supabase
-    .from('system_configs')
-    .upsert({
-      key,
-      value,
-      description: description ?? '',
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'key' })
-    .select('*')
-    .single()
-
-  if (upsertError) {
-    return NextResponse.json({ error: upsertError.message }, { status: 500 })
-  }
-
-  // Audit Log
-  const { error: auditError } = await supabase
-    .from('audit_logs')
-    .insert({
-      user_id: sessionUser.id,
-      action: 'CONFIG_CHANGED',
-      entity: 'SystemConfig',
-      entity_id: key,
-      new_value: value,
-      metadata: JSON.stringify({ description })
+  try {
+    // Upsert using Prisma
+    const config = await prisma.systemConfig.upsert({
+      where: { key },
+      update: {
+        value,
+        description: description ?? '',
+        updatedAt: new Date()
+      },
+      create: {
+        key,
+        value,
+        description: description ?? '',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
     })
 
-  if (auditError) console.error("Error creating config changed audit log:", auditError)
+    // Audit Log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: sessionUser.id,
+          action: 'CONFIG_CHANGED',
+          entity: 'SystemConfig',
+          entityId: key,
+          newValue: value,
+          metadata: JSON.stringify({ description }),
+          createdAt: new Date()
+        }
+      })
+    } catch (auditError) {
+      console.error("Error creating config changed audit log:", auditError)
+    }
 
-  return NextResponse.json({ success: true, config })
+    return NextResponse.json({ success: true, config })
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 }

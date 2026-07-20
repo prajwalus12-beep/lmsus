@@ -1,5 +1,5 @@
-import { getServerSession, getSupabaseServer } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { getServerSession } from '@/lib/supabaseServer'
+import prisma from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { CalendarClient } from './CalendarClient'
 import { getSystemDate } from '@/lib/systemDate'
@@ -11,29 +11,34 @@ export default async function CalendarPage() {
   const sessionUser = session?.user as any;
   const sysDate = await getSystemDate()
 
-  // Rule 27: Employees can view a read-only team calendar showing all approved leaves.
-  // Use supabaseAdmin to ensure visibility of all approved leaves regardless of RLS
-  const [{ data: requests }, { data: holidays }, { data: allDepts }] = await Promise.all([
-    supabaseAdmin
-      .from('leave_requests')
-      .select('*, profiles!leave_requests_user_id_fkey(name, email, departments(name))')
-      .in('status', ['HR_APPROVED', 'L1_APPROVED']),
-    supabaseAdmin.from('holidays').select('*'),
-    supabaseAdmin.from('departments').select('name').order('name')
+  // Fetch approved requests, holidays, and departments using Prisma
+  const [requests, holidays, allDepts] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: {
+        status: { in: ['HR_APPROVED', 'L1_APPROVED'] }
+      },
+      include: {
+        user: {
+          include: { department: true }
+        }
+      }
+    }),
+    prisma.holiday.findMany(),
+    prisma.department.findMany({
+      select: { name: true },
+      orderBy: { name: 'asc' }
+    })
   ])
 
   const formattedRequests = (requests || []).map((req: any) => {
-    const profile = req.profiles
-    const dept = Array.isArray(profile?.departments) ? profile.departments[0] : profile?.departments
-
     return {
       id: req.id,
-      userId: req.user_id,
-      title: `${profile?.name || 'Unknown'} - ${req.type}`,
-      email: profile?.email || '',
-      startDate: req.start_date,
-      endDate: req.end_date,
-      department: dept?.name || 'N/A',
+      userId: req.userId,
+      title: `${req.user?.name || 'Unknown'} - ${req.type}`,
+      email: req.user?.email || '',
+      startDate: req.startDate.toISOString(),
+      endDate: req.endDate.toISOString(),
+      department: req.user?.department?.name || 'N/A',
       status: req.status,
     }
   });
@@ -41,7 +46,7 @@ export default async function CalendarPage() {
   const formattedHolidays = (holidays || []).map((h: any) => ({
     id: h.id,
     name: h.name,
-    date: h.date,
+    date: h.date.toISOString(),
   }));
 
   const departments = (allDepts || []).map(d => d.name);

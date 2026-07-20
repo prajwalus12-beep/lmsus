@@ -1,28 +1,51 @@
-import { getServerSession, getSupabaseServer } from '@/lib/supabaseServer'
+import { getServerSession } from '@/lib/supabaseServer'
 import { redirect } from 'next/navigation'
 import { SettingsClient } from './SettingsClient'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 
 export default async function SettingsPage() {
   const session = await getServerSession()
   if (!session?.user) redirect('/login')
 
-  const supabase = await getSupabaseServer()
-
   const [
-    { data: closures },
-    { data: adjustments },
-    { data: negativeLeaves },
-    { data: testModeRows },
-    { data: users },
-    { data: configs }
+    closures,
+    adjustments,
+    negativeLeaves,
+    testModeRows,
+    users,
+    configs
   ] = await Promise.all([
-    supabase.from('leave_year_closures').select('*').order('year', { ascending: false }),
-    supabaseAdmin.from('leave_balance_adjustments').select('*, profiles!user_id(name)').order('created_at', { ascending: false }).limit(1000),
-    supabaseAdmin.from('negative_leave_trackings').select('*, profiles!user_id(name)').order('created_at', { ascending: false }),
-    supabase.from('system_date_overrides').select('*').order('created_at', { ascending: false }).limit(1),
-    supabaseAdmin.from('profiles').select('id, name, departments(name)').order('name', { ascending: true }),
-    supabase.from('system_configs').select('*')
+    prisma.leaveYearClosure.findMany({
+      orderBy: { year: 'desc' }
+    }),
+    prisma.leaveBalanceAdjustment.findMany({
+      include: {
+        user: true
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 1000
+    }),
+    prisma.negativeLeaveTracking.findMany({
+      include: {
+        user: true
+      },
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.systemDateOverride.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 1
+    }),
+    prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        department: {
+          select: { name: true }
+        }
+      },
+      orderBy: { name: 'asc' }
+    }),
+    prisma.systemConfig.findMany()
   ])
 
   const testMode = testModeRows?.[0] || null
@@ -35,53 +58,57 @@ export default async function SettingsPage() {
       closures={(closures || []).map((c: any) => ({
         id: c.id,
         year: c.year,
-        closedAt: new Date(c.closed_at).toISOString(),
-        closedBy: c.closed_by,
+        closedAt: c.closedAt.toISOString(),
+        closedBy: c.closedBy,
         status: c.status,
         remarks: c.remarks,
-        carryForwardProcessed: c.carry_forward_processed
+        carryForwardProcessed: c.carryForwardProcessed
       }))}
       adjustments={(adjustments || []).map((a: any) => ({
         id: a.id,
-        userId: a.user_id,
-        userName: a.profiles?.name || 'Unknown',
-        leaveType: a.leave_type,
+        userId: a.userId,
+        userName: a.user?.name || 'Unknown',
+        leaveType: a.leaveType,
         amount: a.amount,
-        adjustmentType: a.adjustment_type,
+        adjustmentType: a.adjustmentType,
         reason: a.reason,
-        effectiveYear: a.effective_year,
-        enteredBy: a.entered_by,
-        enteredByName: a.entered_by_name,
+        effectiveYear: a.effectiveYear,
+        enteredBy: a.enteredBy,
+        enteredByName: a.enteredByName,
         remarks: a.remarks,
-        createdAt: new Date(a.created_at).toISOString()
+        createdAt: a.createdAt.toISOString()
       }))}
       negativeLeaves={(negativeLeaves || []).map((n: any) => ({
         id: n.id,
-        userId: n.user_id,
-        leaveRequestId: n.leave_request_id,
-        leaveType: n.leave_type,
-        negativeDays: n.negative_days,
-        dailySalary: n.daily_salary,
-        recoveryAmount: n.recovery_amount,
+        userId: n.userId,
+        leaveRequestId: n.leaveRequestId,
+        leaveType: n.leaveType,
+        negativeDays: n.negativeDays,
+        dailySalary: n.dailySalary,
+        recoveryAmount: n.recoveryAmount,
         status: n.status,
-        recoveredAt: n.recovered_at ? new Date(n.recovered_at).toISOString() : null,
+        recoveredAt: n.recoveredAt ? n.recoveredAt.toISOString() : null,
         remarks: n.remarks,
-        userName: n.profiles?.name || 'Unknown',
-        createdAt: new Date(n.created_at).toISOString(),
-        updatedAt: new Date(n.updated_at).toISOString()
+        userName: n.user?.name || 'Unknown',
+        createdAt: n.createdAt.toISOString(),
+        updatedAt: n.updatedAt.toISOString()
       }))}
       testMode={testMode ? {
         id: testMode.id,
-        isTestMode: testMode.is_test_mode,
-        overrideDate: testMode.override_date ? new Date(testMode.override_date).toISOString() : null,
-        changedBy: testMode.changed_by,
-        changedByName: testMode.changed_by_name,
-        oldDate: testMode.old_date ? new Date(testMode.old_date).toISOString() : null,
-        newDate: testMode.new_date ? new Date(testMode.new_date).toISOString() : null,
+        isTestMode: testMode.isTestMode,
+        overrideDate: testMode.overrideDate ? testMode.overrideDate.toISOString() : null,
+        changedBy: testMode.changedBy,
+        changedByName: testMode.changedByName,
+        oldDate: testMode.oldDate ? testMode.oldDate.toISOString() : null,
+        newDate: testMode.newDate ? testMode.newDate.toISOString() : null,
         reason: testMode.reason,
-        createdAt: new Date(testMode.created_at).toISOString()
+        createdAt: testMode.createdAt.toISOString()
       } : null}
-      users={users || []}
+      users={users.map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        departments: u.department ? { name: u.department.name } : null
+      }))}
       showClBalanceToEmployee={showClBalanceToEmployee}
       emailEnabled={emailEnabled}
       initialConfigs={configMap}

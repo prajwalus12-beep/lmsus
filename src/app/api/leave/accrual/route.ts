@@ -1,50 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/supabaseServer'
-import { calculateMonthlyPLAccrual } from '@/lib/accrualEngine'
+import { calculateMonthlyPLAccrual, calculateMonthlyCLAccrual } from '@/lib/accrualEngine'
 import { syncUserLedger } from '@/lib/ledgerSync'
 import { getSystemDate } from '@/lib/systemDate'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession()
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const authHeader = req.headers.get('authorization')
+  const cronSecret = process.env.CRON_SECRET
+  const isCronAuthorized = cronSecret && authHeader === `Bearer ${cronSecret}`
 
-  const sessionUser = session.user as any
-  if (sessionUser.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden — Admin only' }, { status: 403 })
+  let sessionUser: any = null
+  if (!isCronAuthorized) {
+    const session = await getServerSession()
+    if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    sessionUser = session.user as any
+    if (sessionUser.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Forbidden — Admin only' }, { status: 403 })
+    }
   }
 
-  const { month, year } = await req.json()
+  let month: number | undefined
+  let year: number | undefined
+  try {
+    const body = await req.json()
+    month = body.month
+    year = body.year
+  } catch (e) {
+    // No body or invalid JSON
+  }
+
   const systemDate = await getSystemDate()
+  if (month === undefined || year === undefined) {
+    const prevDate = new Date(systemDate)
+    prevDate.setMonth(prevDate.getMonth() - 1)
+    month = prevDate.getMonth()
+    year = prevDate.getFullYear()
+  }
 
-  const { data: users, error: usersError } = await supabaseAdmin
-    .from('profiles')
-    .select('*')
-    .eq('status', 'ACTIVE')
-
-  if (usersError) return NextResponse.json({ error: usersError.message }, { status: 500 })
+  const users = await prisma.user.findMany({
+    where: { status: 'ACTIVE' }
+  })
 
   const results: { user: string; monthsAccrued: string[]; totalAccrued: number }[] = []
 
-  for (const user of (users || [])) {
+  for (const user of users) {
     // 1. Check the last monthly accrual date for this user
-    const { data: lastAccrual } = await supabaseAdmin
-      .from('leave_balance_adjustments')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('adjustment_type', 'MONTHLY_ACCRUAL')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const lastAccrual = await prisma.leaveBalanceAdjustment.findFirst({
+      where: {
+        userId: user.id,
+        adjustmentType: 'MONTHLY_ACCRUAL'
+      },
+      orderBy: { createdAt: 'desc' }
+    })
 
     const realToday = new Date()
     let startYear = realToday.getFullYear()
     let startMonth = realToday.getMonth()
 
     if (lastAccrual) {
-      const lastDate = new Date(lastAccrual.created_at)
-      // If the last accrual was created_at = 2026-08-01, it accrued for July 2026 (month = 6).
-      // So the next month to accrue starts at loop month = August 2026 (month = 7, which is lastDate.getUTCMonth()).
+      const lastDate = new Date(lastAccrual.createdAt)
       const nextMonth = lastDate.getUTCMonth() // 0-11
       const nextYear = lastDate.getUTCFullYear()
 
@@ -64,85 +79,155 @@ export async function POST(req: NextRequest) {
 
     const monthsAccrued: string[] = []
     let totalAccrued = 0
+    const changedYears = new Set<number>()
 
     while (loopTimeVal <= targetTimeVal) {
-      const calc = await calculateMonthlyPLAccrual(supabaseAdmin, user.id, loopYear, loopMonth)
-      
-      if (calc.accrued > 0) {
-        const accrualDate = new Date(loopYear, loopMonth + 1, 1).toISOString()
-        const monthLabel = new Date(loopYear, loopMonth).toLocaleString('default', { month: 'short', year: 'numeric' })
+      let isChanged = false
+      const monthLabel = new Date(loopYear, loopMonth).toLocaleString('default', { month: 'short', year: 'numeric' })
+      const accrualDate = new Date(Date.UTC(loopYear, loopMonth + 1, 1))
 
-        // Create adjustment
-        const { error: adjError } = await supabaseAdmin
-          .from('leave_balance_adjustments')
-          .insert({
-            user_id: user.id,
-            leave_type: 'PL',
-            amount: calc.accrued,
-            adjustment_type: 'MONTHLY_ACCRUAL',
-            reason: `Monthly PL Accrual (${calc.workingDays} working days: ${calc.totalDays}d - ${calc.weekendsCount}w - ${calc.holidaysCount}h - ${calc.leaveDaysCount}l)`,
-            effective_year: loopYear,
-            entered_by: sessionUser.id,
-            entered_by_name: 'System (Auto)',
-            created_at: accrualDate
+      // Check and calculate PL
+      const existingPl = await prisma.leaveBalanceAdjustment.findFirst({
+        where: {
+          userId: user.id,
+          leaveType: 'PL',
+          adjustmentType: 'MONTHLY_ACCRUAL',
+          effectiveYear: loopYear,
+          createdAt: {
+            gte: new Date(Date.UTC(loopYear, loopMonth + 1, 1)),
+            lte: new Date(Date.UTC(loopYear, loopMonth + 1, 2))
+          }
+        }
+      })
+
+      if (!existingPl) {
+        const calcPl = await calculateMonthlyPLAccrual(user.id, loopYear, loopMonth)
+        if (calcPl.accrued > 0) {
+          await prisma.leaveBalanceAdjustment.create({
+            data: {
+              userId: user.id,
+              leaveType: 'PL',
+              amount: calcPl.accrued,
+              adjustmentType: 'MONTHLY_ACCRUAL',
+              reason: `Monthly PL Accrual (${calcPl.workingDays} working days: ${calcPl.totalDays}d - ${calcPl.weekendsCount}w - ${calcPl.holidaysCount}h - ${calcPl.leaveDaysCount}l)`,
+              effectiveYear: loopYear,
+              enteredBy: sessionUser?.id || 'SYSTEM_CRON',
+              enteredByName: 'System (Auto)',
+              createdAt: accrualDate
+            }
           })
 
-        if (adjError) {
-          console.error(`Error saving adjustment for user ${user.id} in ${monthLabel}:`, adjError)
-        } else {
-          // Fetch or initialize leave balance for loopYear
-          let { data: balance } = await supabaseAdmin
-            .from('leave_balances')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('year', loopYear)
-            .maybeSingle()
+          let balance = await prisma.leaveBalance.findUnique({
+            where: { userId_year: { userId: user.id, year: loopYear } }
+          })
 
           if (!balance) {
-            const { data: newBalance, error: newBalError } = await supabaseAdmin
-              .from('leave_balances')
-              .insert({
-                user_id: user.id,
+            balance = await prisma.leaveBalance.create({
+              data: {
+                userId: user.id,
                 year: loopYear,
-                opening_pl: 0,
-                opening_cl: 7,
-                opening_comp: 0,
+                openingPl: 0,
+                openingCl: 0,
+                openingComp: 0,
                 pl: 0,
-                cl: 7,
-                sl: 7,
+                cl: 0,
+                sl: 0,
                 comp: 0,
-                pl_accrued: 0,
-                pl_used: 0,
-                cl_used: 0,
-                sl_used: 0,
-                pl_carry_forward: 0,
-                updated_at: systemDate.toISOString()
-              })
-              .select()
-              .single()
+                plAccrued: 0,
+                plUsed: 0,
+                clUsed: 0,
+                slUsed: 0,
+                plCarryForward: 0,
+                updatedAt: systemDate
+              }
+            })
+          }
 
-            if (newBalError) {
-              console.error(`Failed to create balance row for ${user.id} for year ${loopYear}:`, newBalError)
-            } else {
-              balance = newBalance
+          await prisma.leaveBalance.update({
+            where: { id: balance.id },
+            data: {
+              pl: (balance.pl || 0) + calcPl.accrued,
+              plAccrued: (balance.plAccrued || 0) + calcPl.accrued,
+              updatedAt: systemDate
             }
-          }
-
-          if (balance) {
-            await supabaseAdmin
-              .from('leave_balances')
-              .update({
-                pl: (balance.pl || 0) + calc.accrued,
-                pl_accrued: (balance.pl_accrued || 0) + calc.accrued,
-                updated_at: systemDate.toISOString()
-              })
-              .eq('id', balance.id)
-          }
-
-          await syncUserLedger(user.id, loopYear)
-          monthsAccrued.push(monthLabel)
-          totalAccrued += calc.accrued
+          })
+          isChanged = true
+          totalAccrued += calcPl.accrued
         }
+      }
+
+      // Check and calculate CL
+      const existingCl = await prisma.leaveBalanceAdjustment.findFirst({
+        where: {
+          userId: user.id,
+          leaveType: 'CL',
+          adjustmentType: 'MONTHLY_ACCRUAL',
+          effectiveYear: loopYear,
+          createdAt: {
+            gte: new Date(Date.UTC(loopYear, loopMonth + 1, 1)),
+            lte: new Date(Date.UTC(loopYear, loopMonth + 1, 2))
+          }
+        }
+      })
+
+      if (!existingCl) {
+        const calcCl = await calculateMonthlyCLAccrual(user.id, loopYear, loopMonth)
+        if (calcCl.accrued > 0) {
+          await prisma.leaveBalanceAdjustment.create({
+            data: {
+              userId: user.id,
+              leaveType: 'CL',
+              amount: calcCl.accrued,
+              adjustmentType: 'MONTHLY_ACCRUAL',
+              reason: `Monthly CL Accrual (Annual Entitlement: ${calcCl.annualEntitlement}d, Prorated: ${calcCl.isProrated ? 'Yes' : 'No'})`,
+              effectiveYear: loopYear,
+              enteredBy: sessionUser?.id || 'SYSTEM_CRON',
+              enteredByName: 'System (Auto)',
+              createdAt: accrualDate
+            }
+          })
+
+          let balance = await prisma.leaveBalance.findUnique({
+            where: { userId_year: { userId: user.id, year: loopYear } }
+          })
+
+          if (!balance) {
+            balance = await prisma.leaveBalance.create({
+              data: {
+                userId: user.id,
+                year: loopYear,
+                openingPl: 0,
+                openingCl: 0,
+                openingComp: 0,
+                pl: 0,
+                cl: 0,
+                sl: 0,
+                comp: 0,
+                plAccrued: 0,
+                plUsed: 0,
+                clUsed: 0,
+                slUsed: 0,
+                plCarryForward: 0,
+                updatedAt: systemDate
+              }
+            })
+          }
+
+          await prisma.leaveBalance.update({
+            where: { id: balance.id },
+            data: {
+              cl: (balance.cl || 0) + calcCl.accrued,
+              updatedAt: systemDate
+            }
+          })
+          isChanged = true
+          totalAccrued += calcCl.accrued
+        }
+      }
+
+      if (isChanged) {
+        changedYears.add(loopYear)
+        monthsAccrued.push(monthLabel)
       }
 
       // Advance one month
@@ -152,6 +237,11 @@ export async function POST(req: NextRequest) {
         loopYear++
       }
       loopTimeVal = loopYear * 12 + loopMonth
+    }
+
+    // Sync user ledger only once per modified year after the whole loop has processed
+    for (const y of changedYears) {
+      await syncUserLedger(user.id, y)
     }
 
     if (totalAccrued > 0) {

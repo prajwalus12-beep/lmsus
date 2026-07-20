@@ -1,19 +1,21 @@
 import { unstable_cache } from 'next/cache'
-import { supabaseAdmin } from './supabaseAdmin'
+import prisma from './prisma'
 
 // 1. Cache Holidays (1 hour)
-// NOTE: unstable_cache cannot use cookies() / getSupabaseServer() — use supabaseAdmin instead.
 export const getCachedHolidays = unstable_cache(
   async (year: number) => {
-    const startOfYear = `${year}-01-01T00:00:00.000Z`
-    const endOfYear = `${year}-12-31T23:59:59.999Z`
-    const { data } = await supabaseAdmin
-      .from('holidays')
-      .select('*')
-      .gte('date', startOfYear)
-      .lte('date', endOfYear)
-      .order('date', { ascending: true })
-    return data || []
+    const startOfYear = new Date(Date.UTC(year, 0, 1))
+    const endOfYear = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999))
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        date: {
+          gte: startOfYear,
+          lte: endOfYear
+        }
+      },
+      orderBy: { date: 'asc' }
+    })
+    return holidays
   },
   ['holidays-cache'],
   { revalidate: 3600, tags: ['holidays'] }
@@ -22,12 +24,10 @@ export const getCachedHolidays = unstable_cache(
 // 2. Cache System Config (1 hour)
 export const getCachedConfig = unstable_cache(
   async (key: string) => {
-    const { data } = await supabaseAdmin
-      .from('system_configs')
-      .select('*')
-      .eq('key', key)
-      .maybeSingle()
-    return data || null
+    const config = await prisma.systemConfig.findUnique({
+      where: { key }
+    })
+    return config
   },
   ['system-config-cache'],
   { revalidate: 3600, tags: ['config'] }
@@ -36,11 +36,10 @@ export const getCachedConfig = unstable_cache(
 // 3. Cache Department List
 export const getCachedDepartments = unstable_cache(
   async () => {
-    const { data } = await supabaseAdmin
-      .from('departments')
-      .select('*')
-      .order('name', { ascending: true })
-    return data || []
+    const departments = await prisma.department.findMany({
+      orderBy: { name: 'asc' }
+    })
+    return departments
   },
   ['departments-cache'],
   { revalidate: 3600, tags: ['departments'] }

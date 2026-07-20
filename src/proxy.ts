@@ -1,36 +1,12 @@
-import { createServerClient } from '@supabase/ssr'
+import { decryptSession } from '@/lib/session'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   })
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ulwoyxlnmtfnbfpfujtq.supabase.co'
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key'
-
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
 
   // Protect all employee routes, ignore /login, /api/auth, static assets, etc.
   const isAuthPage = request.nextUrl.pathname.startsWith('/login')
@@ -42,9 +18,13 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const sessionToken = request.cookies.get('lms-session')?.value
+    if (!sessionToken) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
 
-    if (error || !user) {
+    const session = decryptSession(sessionToken)
+    if (!session || !session.id) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
   } catch (err) {
@@ -58,3 +38,4 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|api/auth).*)'],
 }
+

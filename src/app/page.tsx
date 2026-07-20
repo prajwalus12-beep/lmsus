@@ -1,8 +1,9 @@
-import { getSupabaseServer, getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { getServerSession } from '@/lib/supabaseServer'
+import prisma from '@/lib/prisma'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, FileText, CheckCircle2, AlertCircle } from "lucide-react"
 import { redirect } from "next/navigation"
+import { checkAndRunLazyAccrual } from '@/lib/lazyAccrual'
 
 export default async function DashboardPage() {
   const session = await getServerSession()
@@ -11,26 +12,32 @@ export default async function DashboardPage() {
     redirect("/login")
   }
 
+  // Trigger lazy monthly PL accrual check
+  await checkAndRunLazyAccrual()
+
   if ((session?.user as any)?.role === "EMPLOYEE") {
     redirect("/portal")
   }
 
-  // Use supabaseAdmin to ensure full team metrics for HR/Admin
+  // Use Prisma to ensure full team metrics for HR/Admin
   const [
-    { count: activeUsersCount },
-    { count: resignedUsersCount },
-    { count: pendingRequests },
-    { data: balances }
+    activeUsersCount,
+    resignedUsersCount,
+    pendingRequests,
+    balances
   ] = await Promise.all([
-    supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
-    supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('status', 'RESIGNED'),
-    supabaseAdmin.from('leave_requests').select('*', { count: 'exact', head: true }).in('status', ['PENDING', 'L1_APPROVED']),
-    supabaseAdmin.from('leave_balances').select('pl_used, cl_used').eq('year', new Date().getFullYear())
+    prisma.user.count({ where: { status: 'ACTIVE' } }),
+    prisma.user.count({ where: { status: 'RESIGNED' } }),
+    prisma.leaveRequest.count({ where: { status: { in: ['PENDING', 'L1_APPROVED'] } } }),
+    prisma.leaveBalance.findMany({
+      where: { year: new Date().getFullYear() },
+      select: { plUsed: true, clUsed: true }
+    })
   ])
   
-  // 2. Calculations
-  const totalPlTaken = (balances || []).reduce((acc: number, curr: any) => acc + (curr.pl_used || 0), 0);
-  const totalClTaken = (balances || []).reduce((acc: number, curr: any) => acc + (curr.cl_used || 0), 0);
+  // Calculations
+  const totalPlTaken = (balances || []).reduce((acc: number, curr: any) => acc + (curr.plUsed || 0), 0);
+  const totalClTaken = (balances || []).reduce((acc: number, curr: any) => acc + (curr.clUsed || 0), 0);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -60,24 +67,24 @@ export default async function DashboardPage() {
             <p className="text-xs text-slate-500 mt-1">Requires approval</p>
           </CardContent>
         </Card>
-        <Card className="bg-white border-violet-100">
+        <Card className="bg-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-violet-700">Total PL Taken (Team)</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-violet-600" />
+            <CardTitle className="text-sm font-medium">Privilege Leave (PL) Taken</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-violet-700">{totalPlTaken} days</div>
-            <p className="text-xs text-slate-500 mt-1">Across all employees</p>
+            <div className="text-2xl font-bold">{totalPlTaken} days</div>
+            <p className="text-xs text-slate-500 mt-1">This year</p>
           </CardContent>
         </Card>
-        <Card className="bg-white border-amber-100">
+        <Card className="bg-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-amber-700">Total CL Taken (Team)</CardTitle>
-            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <CardTitle className="text-sm font-medium">Casual Leave (CL) Taken</CardTitle>
+            <AlertCircle className="h-4 w-4 text-rose-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-700">{totalClTaken} days</div>
-            <p className="text-xs text-slate-500 mt-1">Across all employees</p>
+            <div className="text-2xl font-bold">{totalClTaken} days</div>
+            <p className="text-xs text-slate-500 mt-1">This year</p>
           </CardContent>
         </Card>
       </div>

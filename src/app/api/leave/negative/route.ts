@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 import { getSystemDateTime } from '@/lib/systemDate'
 
 export async function POST(req: NextRequest) {
@@ -26,52 +26,44 @@ export async function POST(req: NextRequest) {
   try {
     const systemDate = await getSystemDateTime()
     
-    // Fetch the negative leave tracking record
-    const { data: record, error: fetchErr } = await supabaseAdmin
-      .from('negative_leave_trackings')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
+    // Fetch the negative leave tracking record using Prisma
+    const record = await prisma.negativeLeaveTracking.findUnique({
+      where: { id }
+    })
 
-    if (fetchErr || !record) {
-      return NextResponse.json({ error: fetchErr?.message || 'Negative leave tracking record not found' }, { status: 404 })
+    if (!record) {
+      return NextResponse.json({ error: 'Negative leave tracking record not found' }, { status: 404 })
     }
 
     const updateData: any = {
       status,
       remarks: remarks || record.remarks,
-      updated_at: systemDate.toISOString()
+      updatedAt: systemDate
     }
 
     if (status === 'RECOVERED') {
-      updateData.recovered_at = systemDate.toISOString()
+      updateData.recoveredAt = systemDate
     }
 
-    const { data: updatedRecord, error: updateErr } = await supabaseAdmin
-      .from('negative_leave_trackings')
-      .update(updateData)
-      .eq('id', id)
-      .select('*')
-      .single()
-
-    if (updateErr || !updatedRecord) {
-      throw new Error(updateErr?.message || 'Failed to update negative leave tracking status')
-    }
+    const updatedRecord = await prisma.negativeLeaveTracking.update({
+      where: { id },
+      data: updateData
+    })
 
     // Log in Audit Logs
     try {
-      await supabaseAdmin
-        .from('audit_logs')
-        .insert({
-          user_id: sessionUser.id,
+      await prisma.auditLog.create({
+        data: {
+          userId: sessionUser.id,
           action: 'NEGATIVE_LEAVE_SETTLED',
           entity: 'NegativeLeaveTracking',
-          entity_id: id,
-          new_value: status,
-          old_value: record.status,
+          entityId: id,
+          newValue: status,
+          oldValue: record.status,
           metadata: JSON.stringify({ remarks }),
-          created_at: systemDate.toISOString()
-        })
+          createdAt: systemDate
+        }
+      })
     } catch (logError) {
       console.error('Error logging audit for negative leave settlement:', logError)
     }

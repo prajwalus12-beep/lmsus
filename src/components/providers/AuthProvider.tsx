@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
 
 interface UserSession {
   id: string
@@ -33,87 +32,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<SessionData | null>(null)
   const [status, setStatus] = useState<"loading" | "authenticated" | "unauthenticated">("loading")
 
-  const fetchSession = async (user: any) => {
-    if (!user) {
+  const checkSession = async () => {
+    try {
+      const res = await fetch('/api/auth/session')
+      if (res.ok) {
+        const data = await res.json()
+        if (data && data.user) {
+          setSession(data)
+          setStatus("authenticated")
+          return
+        }
+      }
       setSession(null)
       setStatus("unauthenticated")
-      return
-    }
-
-    try {
-      // Query profiles and departments from Supabase
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('*, departments(name)')
-        .eq('id', user.id)
-        .single()
-
-      if (error || !profile) {
-        setSession({
-          user: {
-            id: user.id,
-            name: user.user_metadata?.name || 'Employee',
-            email: user.email || '',
-            role: user.user_metadata?.role || 'EMPLOYEE',
-            department: 'N/A'
-          }
-        })
-      } else {
-        setSession({
-          user: {
-            id: user.id,
-            name: profile.name,
-            email: profile.email,
-            role: profile.role,
-            department: profile.departments?.name || 'N/A'
-          }
-        })
-      }
-      setStatus("authenticated")
     } catch (err) {
       console.error("Error fetching session:", err)
+      setSession(null)
       setStatus("unauthenticated")
     }
   }
 
   useEffect(() => {
-    // 1. Initial session check
-    supabase.auth.getUser().then(async ({ data: { user }, error }) => {
-      if (error) {
-        console.warn("Auth check error:", error.message);
-        if (error.message.includes('Refresh Token') || error.status === 400) {
-          // If refresh token is invalid, clear the session fully
-          await supabase.auth.signOut();
-        }
-      }
-      fetchSession(user)
-    }).catch(err => {
-      console.error("Auth init exception:", err);
-    })
-
-    // 2. Auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (newSession?.user) {
-        await fetchSession(newSession.user)
-      } else {
-        setSession(null)
-        setStatus("unauthenticated")
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
+    checkSession()
   }, [])
 
   const handleSignOut = async () => {
-    // scope: 'global' revokes the server-side refresh token immediately.
-    // Without this, the middleware's auth.getUser() still validates the JWT
-    // until it expires (~1 hour), making logout ineffective.
     try {
-      await supabase.auth.signOut({ scope: 'global' })
+      await fetch('/api/auth/logout', { method: 'POST' })
     } catch (err) {
-      console.error("SignOut network/fetch error (proceeding with local sign-out):", err)
+      console.error("SignOut fetch error:", err)
     }
     setSession(null)
     setStatus("unauthenticated")

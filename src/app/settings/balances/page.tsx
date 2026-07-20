@@ -1,5 +1,5 @@
 import { getServerSession } from '@/lib/supabaseServer'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import prisma from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { BalancesClient } from './BalancesClient'
 
@@ -19,50 +19,42 @@ export default async function OpeningBalancesPage() {
     )
   }
 
-  // Use supabaseAdmin to bypass RLS
+  // Use Prisma to fetch data
   const [
-    { data: users, error },
-    { data: allDepts, error: deptError }
+    users,
+    allDepts
   ] = await Promise.all([
-    supabaseAdmin
-      .from('profiles')
-      .select('*, departments(name), leave_balances(*)')
-      .neq('role', 'ADMIN')
-      .in('status', ['ACTIVE', 'NOTICE_PERIOD'])
-      .order('name', { ascending: true }),
-    supabaseAdmin
-      .from('departments')
-      .select('name')
-      .order('name', { ascending: true })
+    prisma.user.findMany({
+      where: {
+        role: { not: 'ADMIN' },
+        status: { in: ['ACTIVE', 'NOTICE_PERIOD'] }
+      },
+      include: {
+        department: true,
+        balances: true
+      },
+      orderBy: { name: 'asc' }
+    }),
+    prisma.department.findMany({
+      select: { name: true },
+      orderBy: { name: 'asc' }
+    })
   ])
 
-  if (error) {
-    console.error("Error fetching users for balances:", error)
-  }
-  if (deptError) {
-    console.error("Error fetching departments:", deptError)
-  }
-
   const departments = (allDepts || []).map(d => d.name)
+  const currentYear = new Date().getFullYear()
 
   const formattedUsers = (users || []).map((u: any) => {
-    let balance = null
-    if (Array.isArray(u.leave_balances)) {
-      balance = u.leave_balances.find((b: any) => b.year === new Date().getFullYear()) || [...u.leave_balances].sort((a: any, b: any) => b.year - a.year)[0] || null
-    } else {
-      balance = u.leave_balances || null
-    }
-
-    const dept = Array.isArray(u.departments) ? u.departments[0] : u.departments
+    let balance = u.balances.find((b: any) => b.year === currentYear) || [...u.balances].sort((a: any, b: any) => b.year - a.year)[0] || null
 
     return {
       id: u.id,
       name: u.name,
       email: u.email,
-      department: dept?.name || 'N/A',
-      openingPl: balance?.opening_pl || 0,
-      openingCl: balance?.opening_cl || 0,
-      openingComp: balance?.opening_comp || 0,
+      department: u.department?.name || 'N/A',
+      openingPl: balance?.openingPl || 0,
+      openingCl: balance?.openingCl || 0,
+      openingComp: balance?.openingComp || 0,
       currentPl: balance?.pl || 0,
       currentCl: balance?.cl || 0
     }
