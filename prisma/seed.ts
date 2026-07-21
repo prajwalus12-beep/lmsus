@@ -21,6 +21,9 @@ async function main() {
   const hr = await prisma.department.create({ data: { name: 'HR' } })
   const sales = await prisma.department.create({ data: { name: 'Sales' } })
   const finance = await prisma.department.create({ data: { name: 'Finance' } })
+  const puneIt = await prisma.department.create({ data: { name: 'Pune-IT' } })
+  const mumbai = await prisma.department.create({ data: { name: 'Mumbai' } })
+  const demo = await prisma.department.create({ data: { name: 'Demo' } })
 
   await prisma.holiday.createMany({
     data: [
