@@ -169,6 +169,10 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    // Invalidate next.js cache for departments
+    const { revalidateTag } = require('next/cache')
+    revalidateTag('departments')
+
     return NextResponse.json({ 
       success: true, 
       message: 'System reset to seed state successfully.' 
