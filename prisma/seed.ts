@@ -255,65 +255,67 @@ async function main() {
       }
     })
 
-    // Add Monthly PL & CL Accruals for EVERYONE (Jan through June)
-    for (let m = 0; m <= 5; m++) {
-      const joinDate = new Date(u.joinDate)
-      const joinYear = joinDate.getUTCFullYear()
-      const joinMonth = joinDate.getUTCMonth()
-      const currentYear = 2026
+    // Add Monthly PL & CL Accruals for ACTIVE employees only (Jan through June)
+    if (u.status === 'ACTIVE' || !u.status) {
+      for (let m = 0; m <= 5; m++) {
+        const joinDate = new Date(u.joinDate)
+        const joinYear = joinDate.getUTCFullYear()
+        const joinMonth = joinDate.getUTCMonth()
+        const currentYear = 2026
 
-      const joinTimeVal = joinYear * 12 + joinMonth
-      const loopTimeVal = currentYear * 12 + m
+        const joinTimeVal = joinYear * 12 + joinMonth
+        const loopTimeVal = currentYear * 12 + m
 
-      if (loopTimeVal >= joinTimeVal) {
-        // --- 1. Seed PL Accrual ---
-        let plAmount = 1.5
-        let plReason = `Monthly PL Accrual (22 working days: 31d - 9w - 0h - 0l)`
+        if (loopTimeVal >= joinTimeVal) {
+          // --- 1. Seed PL Accrual ---
+          let plAmount = 1.5
+          let plReason = `Monthly PL Accrual (22 working days: 31d - 9w - 0h - 0l)`
 
-        // Special check: in April (m === 3), everyone had a 10-day leave request, so pro-rata is 1.0 day
-        if (m === 3) {
-          plAmount = 1.0
-          plReason = `Monthly PL Accrual (12 working days: 30d - 8w - 0h - 10l)`
-        }
-
-        await prisma.leaveBalanceAdjustment.create({
-          data: {
-            userId: u.id,
-            leaveType: 'PL',
-            amount: plAmount,
-            adjustmentType: 'MONTHLY_ACCRUAL',
-            reason: plReason,
-            effectiveYear: currentYear,
-            enteredBy: admin.id,
-            enteredByName: 'System (Auto)',
-            createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+          // Special check: in April (m === 3), everyone had a 10-day leave request, so pro-rata is 1.0 day
+          if (m === 3) {
+            plAmount = 1.0
+            plReason = `Monthly PL Accrual (12 working days: 30d - 8w - 0h - 10l)`
           }
-        })
 
-        // --- 2. Seed CL Accrual ---
-        let clAmount = 1.0
-        let isProrated = false
-        if (joinYear === currentYear && joinMonth === m) {
-          isProrated = true
-          const daysInMonth = new Date(currentYear, m + 1, 0).getDate()
-          const joiningDay = joinDate.getUTCDate()
-          const daysServed = daysInMonth - joiningDay + 1
-          clAmount = parseFloat(((daysServed / daysInMonth) * 1.0).toFixed(2))
-        }
+          await prisma.leaveBalanceAdjustment.create({
+            data: {
+              userId: u.id,
+              leaveType: 'PL',
+              amount: plAmount,
+              adjustmentType: 'MONTHLY_ACCRUAL',
+              reason: plReason,
+              effectiveYear: currentYear,
+              enteredBy: admin.id,
+              enteredByName: 'System (Auto)',
+              createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+            }
+          })
 
-        await prisma.leaveBalanceAdjustment.create({
-          data: {
-            userId: u.id,
-            leaveType: 'CL',
-            amount: clAmount,
-            adjustmentType: 'MONTHLY_ACCRUAL',
-            reason: `Monthly CL Accrual (Annual Entitlement: 12d, Prorated: ${isProrated ? 'Yes' : 'No'})`,
-            effectiveYear: currentYear,
-            enteredBy: admin.id,
-            enteredByName: 'System (Auto)',
-            createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+          // --- 2. Seed CL Accrual ---
+          let clAmount = 1.0
+          let isProrated = false
+          if (joinYear === currentYear && joinMonth === m) {
+            isProrated = true
+            const daysInMonth = new Date(currentYear, m + 1, 0).getDate()
+            const joiningDay = joinDate.getUTCDate()
+            const daysServed = daysInMonth - joiningDay + 1
+            clAmount = parseFloat(((daysServed / daysInMonth) * 1.0).toFixed(2))
           }
-        })
+
+          await prisma.leaveBalanceAdjustment.create({
+            data: {
+              userId: u.id,
+              leaveType: 'CL',
+              amount: clAmount,
+              adjustmentType: 'MONTHLY_ACCRUAL',
+              reason: `Monthly CL Accrual (Annual Entitlement: 12d, Prorated: ${isProrated ? 'Yes' : 'No'})`,
+              effectiveYear: currentYear,
+              enteredBy: admin.id,
+              enteredByName: 'System (Auto)',
+              createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+            }
+          })
+        }
       }
     }
   }
