@@ -273,7 +273,17 @@ async function main() {
         if (loopTimeVal >= joinTimeVal) {
           // --- 1. Seed PL Accrual ---
           const calcPl = await calculateMonthlyPLAccrual(u.id, currentYear, m, prisma)
-          if (calcPl.accrued > 0) {
+          const existingPlAccrual = await prisma.leaveBalanceAdjustment.findFirst({
+            where: {
+              userId: u.id,
+              leaveType: 'PL',
+              adjustmentType: 'MONTHLY_ACCRUAL',
+              effectiveYear: currentYear,
+              createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+            }
+          })
+
+          if (!existingPlAccrual && calcPl.accrued > 0) {
             await prisma.leaveBalanceAdjustment.create({
               data: {
                 userId: u.id,
@@ -304,7 +314,17 @@ async function main() {
 
           // --- 2. Seed CL Accrual ---
           const calcCl = await calculateMonthlyCLAccrual(u.id, currentYear, m, prisma)
-          if (calcCl.accrued > 0) {
+          const existingClAccrual = await prisma.leaveBalanceAdjustment.findFirst({
+            where: {
+              userId: u.id,
+              leaveType: 'CL',
+              adjustmentType: 'MONTHLY_ACCRUAL',
+              effectiveYear: currentYear,
+              createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+            }
+          })
+
+          if (!existingClAccrual && calcCl.accrued > 0) {
             await prisma.leaveBalanceAdjustment.create({
               data: {
                 userId: u.id,
