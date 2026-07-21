@@ -355,9 +355,9 @@
     },
     {
       "id": "cmp7y4h5q000g17jiy3ttzioy",
-      "key": "CL_ENTITLEMENT_PER_YEAR",
-      "value": "7",
-      "description": null,
+      "key": "CL_ANNUAL_ENTITLEMENT",
+      "value": "12",
+      "description": "Annual Casual/Sick Leave entitlement (minimum: 8)",
       "createdAt": "2026-05-16T06:09:07.551Z",
       "updatedAt": "2026-07-20T10:11:29.850Z"
     },
@@ -382,6 +382,22 @@
       "key": "INCLUDE_PAID_LEAVE_IN_ACCRUAL",
       "value": "false",
       "description": null,
+      "createdAt": "2026-05-16T06:09:07.551Z",
+      "updatedAt": "2026-07-20T10:11:29.850Z"
+    },
+    {
+      "id": "cmp7y4h5q000k17jiu182kz1d",
+      "key": "weekend_sandwich_rule",
+      "value": "true",
+      "description": "Rule 29: If holidays/weekends fall between leave days, they are counted as leave (for CL)",
+      "createdAt": "2026-05-16T06:09:07.551Z",
+      "updatedAt": "2026-07-20T10:11:29.850Z"
+    },
+    {
+      "id": "cmp7y4h5q000l17jiu182kz1e",
+      "key": "auto_cl_pl_conversion",
+      "value": "true",
+      "description": "Rule 37: CL requests longer than 4 days (including weekends) are automatically converted to PL",
       "createdAt": "2026-05-16T06:09:07.551Z",
       "updatedAt": "2026-07-20T10:11:29.850Z"
     }
