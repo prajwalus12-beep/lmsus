@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "@/lib/supabaseServer"
 import { getCachedDepartments } from "@/lib/cachedData"
+import prisma from "@/lib/prisma"
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +14,9 @@ export async function GET(req: NextRequest) {
     const tab = searchParams.get("tab")
 
     if (tab === "departments") {
-      const departments = await getCachedDepartments()
+      const departments = await prisma.department.findMany({
+        orderBy: { name: 'asc' }
+      })
       return NextResponse.json({ departments })
     }
 
