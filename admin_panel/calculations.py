@@ -63,8 +63,15 @@ def calculate_monthly_pl_accrual(supabase_client, user_id: str, year: int, month
     # Query approved leaves within the month
     leaves = supabase_client.table("leave_requests").select("*").eq("user_id", user_id).eq("status", "HR_APPROVED").execute().data
     
+    include_paid = config_dict.get("INCLUDE_PAID_LEAVE_IN_ACCRUAL", "false").lower() == "true"
+    holiday_dates_set = {h['date'].split('T')[0] for h in holidays}
+
     leave_days_count = 0
     for l in leaves:
+        is_paid_leave = l['type'].upper() != 'LOP'
+        if include_paid and is_paid_leave:
+            continue
+
         l_start = datetime.datetime.fromisoformat(l['start_date'].replace('Z', '')).date()
         l_end = datetime.datetime.fromisoformat(l['end_date'].replace('Z', '')).date()
         
@@ -73,7 +80,13 @@ def calculate_monthly_pl_accrual(supabase_client, user_id: str, year: int, month
         overlap_end = min(end_date, l_end)
         
         if overlap_start <= overlap_end:
-            leave_days_count += (overlap_end - overlap_start).days + 1
+            curr = overlap_start
+            while curr <= overlap_end:
+                is_wknd = curr.weekday() in [5, 6]
+                is_hol = curr.isoformat() in holiday_dates_set
+                if not is_wknd and not is_hol:
+                    leave_days_count += 1
+                curr += datetime.timedelta(days=1)
             
     working_days = total_days - weekends_count - holidays_count - leave_days_count
     
