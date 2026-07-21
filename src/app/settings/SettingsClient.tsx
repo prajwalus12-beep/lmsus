@@ -65,6 +65,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
   const [probationMonths, setProbationMonths] = useState(initialConfigs?.['PROBATION_PERIOD_MONTHS'] || "6")
   const [maxNegative, setMaxNegative] = useState(initialConfigs?.['MAX_NEGATIVE_LEAVE'] || "-5")
   const [weekendSandwich, setWeekendSandwich] = useState<boolean>(initialConfigs?.['weekend_sandwich_rule'] === 'true')
+  const [includePaidLeave, setIncludePaidLeave] = useState<boolean>(initialConfigs?.['INCLUDE_PAID_LEAVE_IN_ACCRUAL'] === 'true')
   const [minWorkingDaysThreshold, setMinWorkingDaysThreshold] = useState(initialConfigs?.['min_working_days_threshold'] || "5")
   const [maternityStatutoryCapDays, setMaternityStatutoryCapDays] = useState(initialConfigs?.['maternity_statutory_cap_days'] || "182")
   const [paternityCorporateCapDays, setPaternityCorporateCapDays] = useState(initialConfigs?.['paternity_corporate_cap_days'] || "14")
@@ -249,6 +250,7 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
         { key: 'maternity_statutory_cap_days', value: maternityStatutoryCapDays },
         { key: 'paternity_corporate_cap_days', value: paternityCorporateCapDays },
         { key: 'CL_ANNUAL_ENTITLEMENT', value: String(clEnt) },
+        { key: 'INCLUDE_PAID_LEAVE_IN_ACCRUAL', value: String(includePaidLeave) },
       ]
 
       await Promise.all(configs.map(c => 
@@ -581,6 +583,30 @@ export function SettingsClient({ closures, adjustments, negativeLeaves, testMode
                       <span className="sr-only">Toggle Weekend Sandwich Rule</span>
                       <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform duration-200 ${
                         weekendSandwich ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2 flex flex-col justify-end">
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50">
+                    <div>
+                      <Label className="font-semibold text-slate-800">Include Paid Leave in PL Accrual</Label>
+                      <p className="text-xs text-slate-500">Count CL/PL/SL as active working days</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={includePaidLeave}
+                      onClick={() => setIncludePaidLeave(!includePaidLeave)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                        includePaidLeave
+                          ? 'bg-indigo-600 focus:ring-indigo-500'
+                          : 'bg-slate-300 focus:ring-slate-400'
+                      }`}
+                    >
+                      <span className="sr-only">Toggle Include Paid Leave</span>
+                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform duration-200 ${
+                        includePaidLeave ? 'translate-x-5' : 'translate-x-0'
                       }`} />
                     </button>
                   </div>

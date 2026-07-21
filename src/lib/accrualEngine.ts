@@ -4,8 +4,10 @@ import prisma from "./prisma"
 export async function calculateMonthlyPLAccrual(
   userId: string,
   year: number,
-  month: number // 0-indexed (0 = Jan, 11 = Dec)
+  month: number, // 0-indexed (0 = Jan, 11 = Dec)
+  tx?: any
 ) {
+  const db = tx || prisma
   const start = startOfMonth(new Date(year, month))
   const end = endOfMonth(new Date(year, month))
 
@@ -21,11 +23,11 @@ export async function calculateMonthlyPLAccrual(
     minWorkingDaysThresholdConfig,
     includePaidLeave
   ] = await Promise.all([
-    prisma.systemConfig.findUnique({ where: { key: 'ACCRUAL_RATE_PL' } }),
-    prisma.systemConfig.findUnique({ where: { key: 'ACCRUAL_BASE_DAYS' } }),
-    prisma.systemConfig.findUnique({ where: { key: 'MIN_WORKED_DAYS_FOR_PL' } }),
-    prisma.systemConfig.findUnique({ where: { key: 'min_working_days_threshold' } }),
-    prisma.systemConfig.findUnique({ where: { key: 'INCLUDE_PAID_LEAVE_IN_ACCRUAL' } })
+    db.systemConfig.findUnique({ where: { key: 'ACCRUAL_RATE_PL' } }),
+    db.systemConfig.findUnique({ where: { key: 'ACCRUAL_BASE_DAYS' } }),
+    db.systemConfig.findUnique({ where: { key: 'MIN_WORKED_DAYS_FOR_PL' } }),
+    db.systemConfig.findUnique({ where: { key: 'min_working_days_threshold' } }),
+    db.systemConfig.findUnique({ where: { key: 'INCLUDE_PAID_LEAVE_IN_ACCRUAL' } })
   ])
   
   const rate = parseFloat(rateConfig?.value || "1.5")
@@ -35,7 +37,7 @@ export async function calculateMonthlyPLAccrual(
   // 3. Calculate Deductions
   const weekendsCount = allDays.filter(d => isWeekend(d)).length
   
-  const holidays = await prisma.holiday.findMany({
+  const holidays = await db.holiday.findMany({
     where: {
       date: {
         gte: start,
@@ -46,7 +48,7 @@ export async function calculateMonthlyPLAccrual(
 
   const holidaysCount = holidays?.length || 0
 
-  const leaveRequests = await prisma.leaveRequest.findMany({
+  const leaveRequests = await db.leaveRequest.findMany({
     where: {
       userId,
       status: 'HR_APPROVED',
@@ -55,14 +57,32 @@ export async function calculateMonthlyPLAccrual(
     }
   })
 
+  const holidayDates = new Set(holidays.map((h: any) => h.date.toISOString().split('T')[0]))
+  const includePaid = includePaidLeave?.value === 'true'
+
   let leaveDaysCount = 0
   for (const req of leaveRequests) {
+    const isPaidLeave = req.type.toUpperCase() !== 'LOP'
+    // If INCLUDE_PAID_LEAVE_IN_ACCRUAL is true, approved paid leaves count as worked days (do not subtract them)
+    if (includePaid && isPaidLeave) {
+      continue
+    }
+
     const reqStart = new Date(req.startDate)
     const reqEnd = new Date(req.endDate)
     const overlapStart = reqStart < start ? start : reqStart
     const overlapEnd = reqEnd > end ? end : reqEnd
-    const diff = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    leaveDaysCount += diff
+
+    const current = new Date(overlapStart)
+    while (current <= overlapEnd) {
+      const isWknd = isWeekend(current)
+      const isHol = holidayDates.has(current.toISOString().split('T')[0])
+
+      if (!isWknd && !isHol) {
+        leaveDaysCount++
+      }
+      current.setDate(current.getDate() + 1)
+    }
   }
 
   // 4. Calculate Final Working Days (Formula: Duration - Weekends - Holidays - Leaves)
@@ -101,10 +121,12 @@ export async function calculateMonthlyPLAccrual(
 export async function calculateMonthlyCLAccrual(
   userId: string,
   year: number,
-  month: number // 0-indexed (0 = Jan, 11 = Dec)
+  month: number, // 0-indexed (0 = Jan, 11 = Dec)
+  tx?: any
 ) {
+  const db = tx || prisma
   // 1. Fetch user to check joinDate
-  const user = await prisma.user.findUnique({
+  const user = await db.user.findUnique({
     where: { id: userId },
     select: { joinDate: true }
   })
@@ -123,7 +145,7 @@ export async function calculateMonthlyCLAccrual(
   }
 
   // 2. Fetch Annual CL Entitlement Config
-  const clEntitlementConfig = await prisma.systemConfig.findUnique({
+  const clEntitlementConfig = await db.systemConfig.findUnique({
     where: { key: 'CL_ANNUAL_ENTITLEMENT' }
   })
   const annualEntitlement = clEntitlementConfig ? parseFloat(clEntitlementConfig.value) : 12
@@ -150,7 +172,7 @@ export async function calculateMonthlyCLAccrual(
 
   // 4. Max Annual Accrual check
   // Sum up all MONTHLY_ACCRUAL adjustments for CL in this target year
-  const clAccruals = await prisma.leaveBalanceAdjustment.aggregate({
+  const clAccruals = await db.leaveBalanceAdjustment.aggregate({
     _sum: { amount: true },
     where: {
       userId,

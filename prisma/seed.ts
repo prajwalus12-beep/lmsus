@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { calculateMonthlyPLAccrual, calculateMonthlyCLAccrual } from '../src/lib/accrualEngine'
 
 const prisma = new PrismaClient()
 
@@ -268,53 +269,65 @@ async function main() {
 
         if (loopTimeVal >= joinTimeVal) {
           // --- 1. Seed PL Accrual ---
-          let plAmount = 1.5
-          let plReason = `Monthly PL Accrual (22 working days: 31d - 9w - 0h - 0l)`
+          const calcPl = await calculateMonthlyPLAccrual(u.id, currentYear, m, prisma)
+          if (calcPl.accrued > 0) {
+            await prisma.leaveBalanceAdjustment.create({
+              data: {
+                userId: u.id,
+                leaveType: 'PL',
+                amount: calcPl.accrued,
+                adjustmentType: 'MONTHLY_ACCRUAL',
+                reason: `Monthly PL Accrual (${calcPl.workingDays} working days: ${calcPl.totalDays}d - ${calcPl.weekendsCount}w - ${calcPl.holidaysCount}h - ${calcPl.leaveDaysCount}l)`,
+                effectiveYear: currentYear,
+                enteredBy: admin.id,
+                enteredByName: 'System (Auto)',
+                createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+              }
+            })
 
-          // Special check: in April (m === 3), everyone had a 10-day leave request, so pro-rata is 1.0 day
-          if (m === 3) {
-            plAmount = 1.0
-            plReason = `Monthly PL Accrual (12 working days: 30d - 8w - 0h - 10l)`
-          }
-
-          await prisma.leaveBalanceAdjustment.create({
-            data: {
-              userId: u.id,
-              leaveType: 'PL',
-              amount: plAmount,
-              adjustmentType: 'MONTHLY_ACCRUAL',
-              reason: plReason,
-              effectiveYear: currentYear,
-              enteredBy: admin.id,
-              enteredByName: 'System (Auto)',
-              createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+            const bal = await prisma.leaveBalance.findUnique({
+              where: { userId_year: { userId: u.id, year: currentYear } }
+            })
+            if (bal) {
+              await prisma.leaveBalance.update({
+                where: { id: bal.id },
+                data: {
+                  pl: (bal.pl || 0) + calcPl.accrued,
+                  plAccrued: (bal.plAccrued || 0) + calcPl.accrued
+                }
+              })
             }
-          })
+          }
 
           // --- 2. Seed CL Accrual ---
-          let clAmount = 1.0
-          let isProrated = false
-          if (joinYear === currentYear && joinMonth === m) {
-            isProrated = true
-            const daysInMonth = new Date(currentYear, m + 1, 0).getDate()
-            const joiningDay = joinDate.getUTCDate()
-            const daysServed = daysInMonth - joiningDay + 1
-            clAmount = parseFloat(((daysServed / daysInMonth) * 1.0).toFixed(2))
-          }
+          const calcCl = await calculateMonthlyCLAccrual(u.id, currentYear, m, prisma)
+          if (calcCl.accrued > 0) {
+            await prisma.leaveBalanceAdjustment.create({
+              data: {
+                userId: u.id,
+                leaveType: 'CL',
+                amount: calcCl.accrued,
+                adjustmentType: 'MONTHLY_ACCRUAL',
+                reason: `Monthly CL Accrual (Annual Entitlement: ${calcCl.annualEntitlement}d, Prorated: ${calcCl.isProrated ? 'Yes' : 'No'})`,
+                effectiveYear: currentYear,
+                enteredBy: admin.id,
+                enteredByName: 'System (Auto)',
+                createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+              }
+            })
 
-          await prisma.leaveBalanceAdjustment.create({
-            data: {
-              userId: u.id,
-              leaveType: 'CL',
-              amount: clAmount,
-              adjustmentType: 'MONTHLY_ACCRUAL',
-              reason: `Monthly CL Accrual (Annual Entitlement: 12d, Prorated: ${isProrated ? 'Yes' : 'No'})`,
-              effectiveYear: currentYear,
-              enteredBy: admin.id,
-              enteredByName: 'System (Auto)',
-              createdAt: new Date(Date.UTC(currentYear, m + 1, 1, 0, 0, 1))
+            const bal = await prisma.leaveBalance.findUnique({
+              where: { userId_year: { userId: u.id, year: currentYear } }
+            })
+            if (bal) {
+              await prisma.leaveBalance.update({
+                where: { id: bal.id },
+                data: {
+                  cl: (bal.cl || 0) + calcCl.accrued
+                }
+              })
             }
-          })
+          }
         }
       }
     }
