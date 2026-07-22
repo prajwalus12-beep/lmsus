@@ -289,10 +289,10 @@ export async function submitLeaveRequest(data: {
       }
     }
 
-    // Rule 33: Sick Leave (SL) exceeding 2 days requires document upload
-    if (type === 'SL' && days > 2) {
+    // Rule 33: Sick Leave (SL) of 2 or more days requires document upload
+    if (type === 'SL' && days >= 2) {
       if (!attachmentUrl || attachmentUrl.trim() === '') {
-        throw new Error("Medical certificate attachment is mandatory for Sick Leave exceeding 2 days.")
+        throw new Error("Medical certificate attachment is mandatory for Sick Leave requests of 2 or more days.")
       }
     }
 

@@ -14,17 +14,26 @@ export async function POST(req: NextRequest) {
     const finalPassword = password || 'Unique@123'
     const hashedPassword = bcrypt.hashSync(finalPassword, 12)
 
+    const cleanEmail = email.toLowerCase().trim()
+    const existingUser = await prisma.user.findUnique({
+      where: { email: cleanEmail }
+    })
+
+    if (existingUser) {
+      return NextResponse.json({ error: "An employee with this email address already exists." }, { status: 400 })
+    }
+
     // 1. Create User in Database via Prisma
     const user = await prisma.user.create({
       data: {
         name,
-        email: email.toLowerCase().trim(),
+        email: cleanEmail,
         password: hashedPassword,
         role: role || "EMPLOYEE",
         departmentId: departmentId || null,
         joinDate: joinDate ? new Date(joinDate) : new Date(),
         status: 'ACTIVE',
-        communicationEmail: email.toLowerCase().trim()
+        communicationEmail: cleanEmail
       }
     })
 
