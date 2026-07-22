@@ -58,7 +58,14 @@ export async function calculateMonthlyPLAccrual(
     }
   })
 
-  const holidayDates = new Set(holidays.map((h: any) => h.date.toISOString().split('T')[0]))
+  const toLocalDateString = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+
+  const holidayDates = new Set(holidays.map((h: any) => toLocalDateString(h.date)))
   const includePaid = includePaidLeave?.value === 'true'
 
   let leaveDaysCount = 0
@@ -77,7 +84,7 @@ export async function calculateMonthlyPLAccrual(
     const current = new Date(overlapStart)
     while (current <= overlapEnd) {
       const isWknd = isWeekend(current)
-      const isHol = holidayDates.has(current.toISOString().split('T')[0])
+      const isHol = holidayDates.has(toLocalDateString(current))
 
       if (!isWknd && !isHol) {
         leaveDaysCount++
