@@ -87,7 +87,7 @@ export async function importEmployees(rows: CsvEmployeeRow[]) {
 
     // 4. Send Welcome Email
     try {
-      const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      const appUrl = process.env.NEXTAUTH_URL || 'https://lmsus.vercel.app'
       await sendEmail({
         to: row.email,
         subject: `Welcome to the Leave Management System (LMS) - Account Created`,

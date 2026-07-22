@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Send Confirmation / Welcome Email
     try {
-      const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      const appUrl = process.env.NEXTAUTH_URL || 'https://lmsus.vercel.app'
       await sendEmail({
         to: email,
         subject: `Welcome to the Leave Management System (LMS) - Account Created`,
