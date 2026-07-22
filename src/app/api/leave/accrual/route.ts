@@ -54,21 +54,34 @@ export async function POST(req: NextRequest) {
       orderBy: { createdAt: 'desc' }
     })
 
-    const realToday = new Date()
-    let startYear = realToday.getFullYear()
-    let startMonth = realToday.getMonth()
+    // Determine the starting point for this user's accruals
+    let startYear: number
+    let startMonth: number
 
     if (lastAccrual) {
       const lastDate = new Date(lastAccrual.createdAt)
-      const nextMonth = lastDate.getUTCMonth() // 0-11
-      const nextYear = lastDate.getUTCFullYear()
+      startMonth = lastDate.getUTCMonth() // 0-11 (next month to check, since createdAt is stored as 1st of next month)
+      startYear = lastDate.getUTCFullYear()
+    } else {
+      // If no last accrual, start from joining date or January of target year (whichever is later)
+      if (user.joinDate) {
+        const joinDate = new Date(user.joinDate)
+        const joinYear = joinDate.getUTCFullYear()
+        const joinMonth = joinDate.getUTCMonth()
 
-      const lastAccrualTimeVal = nextYear * 12 + nextMonth
-      const realTodayTimeVal = realToday.getFullYear() * 12 + realToday.getMonth()
-
-      if (lastAccrualTimeVal > realTodayTimeVal) {
-        startMonth = nextMonth
-        startYear = nextYear
+        if (joinYear < year) {
+          startYear = year
+          startMonth = 0 // January of target year
+        } else if (joinYear === year) {
+          startYear = year
+          startMonth = joinMonth // Joining month
+        } else {
+          // Joined after target year
+          continue
+        }
+      } else {
+        startYear = year
+        startMonth = 0
       }
     }
 

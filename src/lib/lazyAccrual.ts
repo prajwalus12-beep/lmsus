@@ -18,22 +18,8 @@ export async function checkAndRunLazyAccrual() {
     const targetMonth = prevDate.getMonth() // 0-11
     const targetYear = prevDate.getFullYear()
 
-    // 1. Check if ANY user has already received ANY monthly accrual for targetMonth/targetYear
-    const existing = await prisma.leaveBalanceAdjustment.findFirst({
-      where: {
-        adjustmentType: 'MONTHLY_ACCRUAL',
-        effectiveYear: targetYear,
-        createdAt: {
-          gte: new Date(Date.UTC(targetYear, targetMonth + 1, 1)),
-          lte: new Date(Date.UTC(targetYear, targetMonth + 1, 2))
-        }
-      }
-    })
-
-    if (existing) {
-      // Already run for this month!
-      return
-    }
+    // Note: Global existing check removed to support backfilling newly added active users.
+    // The per-user check inside the loop below prevents duplicate accruals.
 
     console.log(`[LazyAccrual] Triggering automatic PL/CL accrual for month: ${targetMonth}, year: ${targetYear}`)
 
