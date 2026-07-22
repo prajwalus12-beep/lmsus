@@ -396,7 +396,7 @@ export async function submitLeaveRequest(data: {
 
     // 2. Notify HR & Managers
     if (adminEmails.length > 0) {
-      const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      const appUrl = process.env.NEXTAUTH_URL || 'https://lmsus.vercel.app'
       await Promise.all(adminEmails.map((email: string) => 
         sendEmail({
           to: email,
@@ -583,7 +583,7 @@ export async function submitCompOffWork(data: {
 
     // 2. Notify HR & Managers
     if (adminEmails.length > 0) {
-      const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      const appUrl = process.env.NEXTAUTH_URL || 'https://lmsus.vercel.app'
       await Promise.all(adminEmails.map((email: string) => 
         sendEmail({
           to: email,
