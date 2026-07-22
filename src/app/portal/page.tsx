@@ -84,8 +84,8 @@ export default async function PortalPage() {
   const totalUsed = (balances.plUsed || 0) + (balances.clUsed || 0) + (balances.slUsed || 0);
 
   const wellnessScore = totalAllowed > 0
-    ? Math.min(100, Math.max(0, 100 - (totalUsed / totalAllowed) * 100))
-    : 100;
+    ? Math.min(100, Math.max(0, (totalUsed / totalAllowed) * 100))
+    : 0;
 
   // Map database format to frontend expected format
   const mappedBalances = {

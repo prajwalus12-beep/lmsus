@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
+import { getServerSession } from "@/lib/supabaseServer";
 
 export async function GET() {
   try {
@@ -16,6 +17,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const sessionUser = session.user as any
+    if (sessionUser.role !== "ADMIN") return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
+
     const { name, date } = await req.json();
 
     if (!name || !date) {
@@ -92,6 +98,11 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const sessionUser = session.user as any
+    if (sessionUser.role !== "ADMIN") return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
+
     const { id, name, date } = await req.json();
 
     if (!id || !name || !date) {
@@ -169,6 +180,11 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const sessionUser = session.user as any
+    if (sessionUser.role !== "ADMIN") return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) throw new Error("Missing ID");
