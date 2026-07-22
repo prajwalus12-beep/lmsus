@@ -46,7 +46,8 @@ export async function calculateMonthlyPLAccrual(
     }
   })
 
-  const holidaysCount = holidays?.length || 0
+  // Filter out holidays that fall on weekends to avoid double deduction
+  const holidaysCount = holidays?.filter((h: any) => !isWeekend(h.date)).length || 0
 
   const leaveRequests = await db.leaveRequest.findMany({
     where: {
@@ -163,7 +164,7 @@ export async function calculateMonthlyCLAccrual(
 
   if (joinYear === year && joinMonth === month) {
     isProrated = true
-    daysInMonth = new Date(year, month + 1, 0).getDate()
+    daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
     const joiningDay = joinDate.getUTCDate()
     daysServed = daysInMonth - joiningDay + 1
     const proratedRatio = daysServed / daysInMonth
