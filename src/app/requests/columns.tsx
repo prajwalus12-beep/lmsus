@@ -149,8 +149,12 @@ export const columns: ColumnDef<LeaveRequestRow>[] = [
                 <DropdownMenuItem 
                   onClick={async () => {
                     try {
-                      await approveRequest(req.id)
-                      toast.success("Request approved")
+                      const res = await approveRequest(req.id)
+                      if (res && !res.success) {
+                        toast.error(res.error || "Failed to approve")
+                      } else {
+                        toast.success("Request approved")
+                      }
                     } catch (e) {
                       toast.error(e instanceof Error ? e.message : "Failed to approve")
                     }
@@ -162,8 +166,12 @@ export const columns: ColumnDef<LeaveRequestRow>[] = [
                 <DropdownMenuItem 
                   onClick={async () => {
                     try {
-                      await rejectRequest(req.id)
-                      toast.success("Request rejected")
+                      const res = await rejectRequest(req.id)
+                      if (res && !res.success) {
+                        toast.error(res.error || "Failed to reject")
+                      } else {
+                        toast.success("Request rejected")
+                      }
                     } catch (e) {
                       toast.error(e instanceof Error ? e.message : "Failed to reject")
                     }
@@ -240,8 +248,12 @@ export const compOffColumns: ColumnDef<any>[] = [
                 <DropdownMenuItem 
                   onClick={async () => {
                     try {
-                      await approveCompOff(co.id)
-                      toast.success("Comp-off approved")
+                      const res = await approveCompOff(co.id)
+                      if (res && !res.success) {
+                        toast.error(res.error || "Failed to approve")
+                      } else {
+                        toast.success("Comp-off approved")
+                      }
                     } catch (e) {
                       toast.error(e instanceof Error ? e.message : "Failed to approve")
                     }
@@ -253,8 +265,12 @@ export const compOffColumns: ColumnDef<any>[] = [
                 <DropdownMenuItem 
                   onClick={async () => {
                     try {
-                      await rejectCompOff(co.id)
-                      toast.success("Comp-off rejected")
+                      const res = await rejectCompOff(co.id)
+                      if (res && !res.success) {
+                        toast.error(res.error || "Failed to reject")
+                      } else {
+                        toast.success("Comp-off rejected")
+                      }
                     } catch (e) {
                       toast.error(e instanceof Error ? e.message : "Failed to reject")
                     }
