@@ -9,156 +9,157 @@ import { syncUserLedger } from "@/lib/ledgerSync"
 import { getSystemDateTime } from "@/lib/systemDate"
 
 export async function approveRequest(id: string) {
-  const session = await getServerSession()
-  if (!session) throw new Error("Unauthorized")
+  try {
+    const session = await getServerSession()
+    if (!session) throw new Error("Unauthorized")
 
-  const userRole = session.user.role
-  const approverId = session.user.id
-  const status = userRole === "ADMIN" ? "HR_APPROVED" : "L1_APPROVED"
+    const userRole = session.user.role
+    const approverId = session.user.id
+    const status = userRole === "ADMIN" ? "HR_APPROVED" : "L1_APPROVED"
 
-  // Prevent overriding finalized requests
-  const currentReq = await prisma.leaveRequest.findUnique({
-    where: { id }
-  })
+    // Prevent overriding finalized requests
+    const currentReq = await prisma.leaveRequest.findUnique({
+      where: { id }
+    })
 
-  if (!currentReq) throw new Error("Leave request not found")
-  if (currentReq.userId === approverId) {
-    throw new Error("Cannot approve your own leave request.")
-  }
-  if (currentReq.status === "HR_APPROVED") {
-    throw new Error("Cannot approve: Leave request is already HR Approved.")
-  }
-  if (currentReq.status === "REJECTED") {
-    throw new Error("Cannot approve: Leave request is already Rejected.")
-  }
-  if (currentReq.status === "L1_APPROVED" && userRole !== "ADMIN") {
-    throw new Error("Cannot approve: Leave request has already been approved by L1 manager.")
-  }
-
-  // Update request using Prisma
-  const request = await prisma.leaveRequest.update({
-    where: { id },
-    data: {
-      status,
-      approvedById: approverId,
-      approvedAt: await getSystemDateTime()
-    },
-    include: {
-      user: true
+    if (!currentReq) throw new Error("Leave request not found")
+    if (currentReq.userId === approverId) {
+      throw new Error("Cannot approve your own leave request.")
     }
-  })
+    if (currentReq.status === "HR_APPROVED") {
+      throw new Error("Cannot approve: Leave request is already HR Approved.")
+    }
+    if (currentReq.status === "REJECTED") {
+      throw new Error("Cannot approve: Leave request is already Rejected.")
+    }
+    if (currentReq.status === "L1_APPROVED" && userRole !== "ADMIN") {
+      throw new Error("Cannot approve: Leave request has already been approved by L1 manager.")
+    }
 
-  // 1. Fetch holidays and config for the calculator
-  const requestYear = new Date(request.startDate).getFullYear()
-  const yearStart = new Date(Date.UTC(requestYear, 0, 1))
-  const yearEnd = new Date(Date.UTC(requestYear, 11, 31, 23, 59, 59, 999))
-
-  const [holidays, sandwichConfig] = await Promise.all([
-    prisma.holiday.findMany({
-      where: {
-        date: {
-          gte: yearStart,
-          lte: yearEnd
-        }
-      }
-    }),
-    prisma.systemConfig.findUnique({ where: { key: 'weekend_sandwich_rule' } })
-  ])
-
-  const holidayDates = new Set(holidays.map((h: any) => h.date.toISOString().split('T')[0]))
-  const isSandwichEnabled = sandwichConfig?.value === "true"
-
-  // 2. Calculate days
-  const { days, effectiveType } = calculateRequestedDays(
-    new Date(request.startDate), 
-    new Date(request.endDate), 
-    holidayDates, 
-    isSandwichEnabled, 
-    request.type, 
-    request.halfDay !== "NONE"
-  )
-
-  // If HR approved, we need to deduct from balance
-  if (status === "HR_APPROVED") {
-    const rawLeaveType = (effectiveType || request.type).toLowerCase() // Use effectiveType (Rule 37)
-    const leaveType = rawLeaveType === "sl" ? "cl" : rawLeaveType
-
-    const balance = await prisma.leaveBalance.findUnique({
-      where: {
-        userId_year: {
-          userId: request.userId,
-          year: requestYear
-        }
+    // Update request using Prisma
+    const request = await prisma.leaveRequest.update({
+      where: { id },
+      data: {
+        status,
+        approvedById: approverId,
+        approvedAt: await getSystemDateTime()
+      },
+      include: {
+        user: true
       }
     })
 
-    if (balance) {
-      const currentVal = (balance as any)[leaveType] || 0
-      const currentUsed = (balance as any)[`${leaveType}Used`] || 0
-      const newVal = currentVal - days
+    // 1. Fetch holidays and config for the calculator
+    const requestYear = new Date(request.startDate).getFullYear()
+    const yearStart = new Date(Date.UTC(requestYear, 0, 1))
+    const yearEnd = new Date(Date.UTC(requestYear, 11, 31, 23, 59, 59, 999))
 
-      const updateData: any = {
-        [leaveType]: newVal,
-        [`${leaveType}Used`]: currentUsed + days
-      }
-
-      if (rawLeaveType === "sl") {
-        updateData.slUsed = (balance.slUsed || 0) + days
-      }
-
-      await prisma.leaveBalance.update({
-        where: { id: balance.id },
-        data: updateData
-      })
-      
-      // Rule 45: Negative Leave Tracking
-      if (newVal < 0) {
-        const negativeDaysInThisRequest = currentVal > 0 ? Math.abs(newVal) : days
-
-        await prisma.negativeLeaveTracking.create({
-          data: {
-            userId: request.userId,
-            leaveRequestId: request.id,
-            leaveType: request.type,
-            negativeDays: negativeDaysInThisRequest,
-            status: 'PENDING',
-            remarks: `Automatic tracking from request ${request.id}`
+    const [holidays, sandwichConfig] = await Promise.all([
+      prisma.holiday.findMany({
+        where: {
+          date: {
+            gte: yearStart,
+            lte: yearEnd
           }
+        }
+      }),
+      prisma.systemConfig.findUnique({ where: { key: 'weekend_sandwich_rule' } })
+    ])
+
+    const holidayDates = new Set(holidays.map((h: any) => h.date.toISOString().split('T')[0]))
+    const isSandwichEnabled = sandwichConfig?.value === "true"
+
+    // 2. Calculate days
+    const { days, effectiveType } = calculateRequestedDays(
+      new Date(request.startDate), 
+      new Date(request.endDate), 
+      holidayDates, 
+      isSandwichEnabled, 
+      request.type, 
+      request.halfDay !== "NONE"
+    )
+
+    // If HR approved, we need to deduct from balance
+    if (status === "HR_APPROVED") {
+      const rawLeaveType = (effectiveType || request.type).toLowerCase() // Use effectiveType (Rule 37)
+      const leaveType = rawLeaveType === "sl" ? "cl" : rawLeaveType
+
+      const balance = await prisma.leaveBalance.findUnique({
+        where: {
+          userId_year: {
+            userId: request.userId,
+            year: requestYear
+          }
+        }
+      })
+
+      if (balance) {
+        const currentVal = (balance as any)[leaveType] || 0
+        const currentUsed = (balance as any)[`${leaveType}Used`] || 0
+        const newVal = currentVal - days
+
+        const updateData: any = {
+          [leaveType]: newVal,
+          [`${leaveType}Used`]: currentUsed + days
+        }
+
+        if (rawLeaveType === "sl") {
+          updateData.slUsed = (balance.slUsed || 0) + days
+        }
+
+        await prisma.leaveBalance.update({
+          where: { id: balance.id },
+          data: updateData
         })
+        
+        // Rule 45: Negative Leave Tracking
+        if (newVal < 0) {
+          const negativeDaysInThisRequest = currentVal > 0 ? Math.abs(newVal) : days
+
+          await prisma.negativeLeaveTracking.create({
+            data: {
+              userId: request.userId,
+              leaveRequestId: request.id,
+              leaveType: request.type,
+              negativeDays: negativeDaysInThisRequest,
+              status: 'PENDING',
+              remarks: `Automatic tracking from request ${request.id}`
+            }
+          })
+        }
+
+        // Keep ledger in sync
+        await syncUserLedger(request.userId, requestYear)
       }
-
-      // Keep ledger in sync
-      await syncUserLedger(request.userId, requestYear)
     }
-  }
 
-  // Email logic
-  const profile = request.user
-  const username = profile?.email ? profile.email.split('@')[0] : (profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
-  const targetEmail = (profile?.communicationEmail && profile.communicationEmail !== 'noreply@yopmail.com') ? profile.communicationEmail : (profile?.email || `${username}@yopmail.com`)
-  if (targetEmail) {
-    const formattedStartDate = new Date(request.startDate).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric'
-    })
-    const formattedEndDate = new Date(request.endDate).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric'
-    })
-    const totalDaysStr = days % 1 === 0 ? String(days) : days.toFixed(1)
-    const approverName = session.user.name || 'HR Administrator'
+    // Email logic
+    const profile = request.user
+    const username = profile?.email ? profile.email.split('@')[0] : (profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
+    const targetEmail = (profile?.communicationEmail && profile.communicationEmail !== 'noreply@yopmail.com') ? profile.communicationEmail : (profile?.email || `${username}@yopmail.com`)
+    if (targetEmail) {
+      const formattedStartDate = new Date(request.startDate).toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      })
+      const formattedEndDate = new Date(request.endDate).toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      })
+      const totalDaysStr = days % 1 === 0 ? String(days) : days.toFixed(1)
+      const approverName = session.user.name || 'HR Administrator'
 
-    const isL1 = status === "L1_APPROVED"
-    const subject = isL1 ? `Leave Request Approved by Manager (Pending HR)` : `Leave Request Approved`
-    const descriptionText = isL1 
-      ? `Your leave request has been approved by your manager and is currently pending final HR approval.` 
-      : `We are pleased to inform you that your recent leave request has been approved.`
-    const badgeBg = isL1 ? "#dbeafe" : "#d1fae5"
-    const badgeText = isL1 ? "#1e3a8a" : "#065f46"
-    const badgeLabel = isL1 ? "approved by manager" : "approved"
+      const isL1 = status === "L1_APPROVED"
+      const subject = isL1 ? `Leave Request Approved by Manager (Pending HR)` : `Leave Request Approved`
+      const descriptionText = isL1 
+        ? `Your leave request has been approved by your manager and is currently pending final HR approval.` 
+        : `We are pleased to inform you that your recent leave request has been approved.`
+      const badgeBg = isL1 ? "#dbeafe" : "#d1fae5"
+      const badgeText = isL1 ? "#1e3a8a" : "#065f46"
+      const badgeLabel = isL1 ? "approved by manager" : "approved"
 
-    await sendEmail({
-      to: targetEmail,
-      subject,
-      html: `
+      await sendEmail({
+        to: targetEmail,
+        subject,
+        html: `
 <div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
     <div style="background-color: #0f9d58; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL</div>
@@ -197,73 +198,78 @@ export async function approveRequest(id: string) {
     This is an automated administrative notification. Please do not reply directly to this message.
   </div>
 </div>
-      `
-    })
-  }
-
-  // Create Audit Log
-  await prisma.auditLog.create({
-    data: {
-      userId: approverId,
-      action: status === "HR_APPROVED" ? "LEAVE_HR_APPROVED" : "LEAVE_L1_APPROVED",
-      entity: "LeaveRequest",
-      entityId: id,
-      metadata: JSON.stringify({ approverName: session.user.name, status }),
-      createdAt: await getSystemDateTime()
+        `
+      })
     }
-  })
 
-  revalidatePath("/requests")
-  return { success: true }
+    // Create Audit Log
+    await prisma.auditLog.create({
+      data: {
+        userId: approverId,
+        action: status === "HR_APPROVED" ? "LEAVE_HR_APPROVED" : "LEAVE_L1_APPROVED",
+        entity: "LeaveRequest",
+        entityId: id,
+        metadata: JSON.stringify({ approverName: session.user.name, status }),
+        createdAt: await getSystemDateTime()
+      }
+    })
+
+    revalidatePath("/requests")
+    return { success: true }
+  } catch (err: any) {
+    console.error("approveRequest Error:", err)
+    return { success: false, error: err.message || "Failed to approve request." }
+  }
 }
 
 export async function rejectRequest(id: string) {
-  const session = await getServerSession()
-  if (!session) throw new Error("Unauthorized")
+  try {
+    const session = await getServerSession()
+    if (!session) throw new Error("Unauthorized")
 
-  const approverId = session.user.id
+    const approverId = session.user.id
 
-  const currentReq = await prisma.leaveRequest.findUnique({
-    where: { id }
-  })
+    const currentReq = await prisma.leaveRequest.findUnique({
+      where: { id }
+    })
 
-  if (!currentReq) throw new Error("Leave request not found")
-  if (currentReq.userId === approverId) {
-    throw new Error("Cannot reject your own leave request.")
-  }
-  if (currentReq.status === "HR_APPROVED" || currentReq.status === "REJECTED") {
-    throw new Error(`Cannot reject: request is already ${currentReq.status.replace('_', ' ').toLowerCase()}`)
-  }
-
-  const request = await prisma.leaveRequest.update({
-    where: { id },
-    data: {
-      status: "REJECTED",
-      approvedById: approverId,
-      approvedAt: await getSystemDateTime()
-    },
-    include: {
-      user: true
+    if (!currentReq) throw new Error("Leave request not found")
+    if (currentReq.userId === approverId) {
+      throw new Error("Cannot reject your own leave request.")
     }
-  })
+    if (currentReq.status === "HR_APPROVED" || currentReq.status === "REJECTED") {
+      throw new Error(`Cannot reject: request is already ${currentReq.status.replace('_', ' ').toLowerCase()}`)
+    }
 
-  // Email Notification
-  const profile = request.user
-  const username = profile?.email ? profile.email.split('@')[0] : (profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
-  const targetEmail = (profile?.communicationEmail && profile.communicationEmail !== 'noreply@yopmail.com') ? profile.communicationEmail : (profile?.email || `${username}@yopmail.com`)
-  if (targetEmail) {
-    const formattedStartDate = new Date(request.startDate).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric'
+    const request = await prisma.leaveRequest.update({
+      where: { id },
+      data: {
+        status: "REJECTED",
+        approvedById: approverId,
+        approvedAt: await getSystemDateTime()
+      },
+      include: {
+        user: true
+      }
     })
-    const formattedEndDate = new Date(request.endDate).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric'
-    })
-    const approverName = session.user.name || 'HR Administrator'
 
-    await sendEmail({
-      to: targetEmail,
-      subject: `Leave Request Rejected`,
-      html: `
+    // Email Notification
+    const profile = request.user
+    const username = profile?.email ? profile.email.split('@')[0] : (profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
+    const targetEmail = (profile?.communicationEmail && profile.communicationEmail !== 'noreply@yopmail.com') ? profile.communicationEmail : (profile?.email || `${username}@yopmail.com`)
+    if (targetEmail) {
+      const formattedStartDate = new Date(request.startDate).toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      })
+      const formattedEndDate = new Date(request.endDate).toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      })
+      const approverName = session.user.name || 'HR Administrator'
+
+      await sendEmail({
+        to: targetEmail,
+        subject: `Leave Request Rejected`,
+        html: `
 <div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
     <div style="background-color: #ea4335; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL</div>
@@ -296,97 +302,102 @@ export async function rejectRequest(id: string) {
   </div>
 </div>
       `
-    })
-  }
-
-  // Create Audit Log
-  await prisma.auditLog.create({
-    data: {
-      userId: approverId,
-      action: "LEAVE_REJECTED",
-      entity: "LeaveRequest",
-      entityId: id,
-      metadata: JSON.stringify({ approverName: session.user.name }),
-      createdAt: await getSystemDateTime()
+      })
     }
-  })
 
-  // Sync ledger
-  await syncUserLedger(request.userId, new Date(request.startDate).getFullYear())
+    // Create Audit Log
+    await prisma.auditLog.create({
+      data: {
+        userId: approverId,
+        action: "LEAVE_REJECTED",
+        entity: "LeaveRequest",
+        entityId: id,
+        metadata: JSON.stringify({ approverName: session.user.name }),
+        createdAt: await getSystemDateTime()
+      }
+    })
 
-  revalidatePath("/requests")
-  return { success: true }
+    // Sync ledger
+    await syncUserLedger(request.userId, new Date(request.startDate).getFullYear())
+
+    revalidatePath("/requests")
+    return { success: true }
+  } catch (err: any) {
+    console.error("rejectRequest Error:", err)
+    return { success: false, error: err.message || "Failed to reject request." }
+  }
 }
 
 export async function approveCompOff(id: string) {
-  const session = await getServerSession()
-  if (!session) throw new Error("Unauthorized")
+  try {
+    const session = await getServerSession()
+    if (!session) throw new Error("Unauthorized")
 
-  const approverId = session.user.id
+    const approverId = session.user.id
 
-  const entry = await prisma.compOffWorkEntry.findUnique({
-    where: { id }
-  })
+    const entry = await prisma.compOffWorkEntry.findUnique({
+      where: { id }
+    })
 
-  if (!entry) throw new Error("Comp-off entry not found")
-  if (entry.userId === approverId) {
-    throw new Error("Cannot approve your own comp-off entry.")
-  }
-  if (entry.status !== "PENDING") {
-    throw new Error(`Cannot approve: entry is already ${entry.status.toLowerCase()}`)
-  }
-
-  const expiryDate = new Date(entry.dateWorked)
-  expiryDate.setDate(expiryDate.getDate() + 90)
-
-  const updatedEntry = await prisma.compOffWorkEntry.update({
-    where: { id },
-    data: {
-      status: "APPROVED",
-      approvedById: approverId,
-      approvedAt: await getSystemDateTime(),
-      expiryDate: expiryDate
-    },
-    include: {
-      user: true
+    if (!entry) throw new Error("Comp-off entry not found")
+    if (entry.userId === approverId) {
+      throw new Error("Cannot approve your own comp-off entry.")
     }
-  })
+    if (entry.status !== "PENDING") {
+      throw new Error(`Cannot approve: entry is already ${entry.status.toLowerCase()}`)
+    }
 
-  const entryYear = new Date(entry.dateWorked).getFullYear()
+    const expiryDate = new Date(entry.dateWorked)
+    expiryDate.setDate(expiryDate.getDate() + 90)
 
-  // Update Leave Balance using Prisma
-  const balance = await prisma.leaveBalance.findUnique({
-    where: {
-      userId_year: {
-        userId: entry.userId,
-        year: entryYear
+    const updatedEntry = await prisma.compOffWorkEntry.update({
+      where: { id },
+      data: {
+        status: "APPROVED",
+        approvedById: approverId,
+        approvedAt: await getSystemDateTime(),
+        expiryDate: expiryDate
+      },
+      include: {
+        user: true
       }
-    }
-  })
+    })
 
-  if (!balance) throw new Error("Leave balance record not found for year " + entryYear)
+    const entryYear = new Date(entry.dateWorked).getFullYear()
 
-  await prisma.leaveBalance.update({
-    where: { id: balance.id },
-    data: {
-      comp: (balance.comp || 0) + entry.daysCredited
-    }
-  })
+    // Update Leave Balance using Prisma
+    const balance = await prisma.leaveBalance.findUnique({
+      where: {
+        userId_year: {
+          userId: entry.userId,
+          year: entryYear
+        }
+      }
+    })
 
-  // Fetch applicant profile
-  const profile = updatedEntry.user
-  const fallbackUsername = profile?.email ? profile.email.split('@')[0] : (profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
-  const targetEmail = (profile?.communicationEmail && profile.communicationEmail !== 'noreply@yopmail.com') ? profile.communicationEmail : (profile?.email || `${fallbackUsername}@yopmail.com`)
-  const approverName = session.user.name || 'HR Administrator'
+    if (!balance) throw new Error("Leave balance record not found for year " + entryYear)
 
-  const formattedDate = new Date(entry.dateWorked).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric'
-  })
+    await prisma.leaveBalance.update({
+      where: { id: balance.id },
+      data: {
+        comp: (balance.comp || 0) + entry.daysCredited
+      }
+    })
 
-  await sendEmail({
-    to: targetEmail,
-    subject: `Comp-Off Log Approved`,
-    html: `
+    // Fetch applicant profile
+    const profile = updatedEntry.user
+    const fallbackUsername = profile?.email ? profile.email.split('@')[0] : (profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
+    const targetEmail = (profile?.communicationEmail && profile.communicationEmail !== 'noreply@yopmail.com') ? profile.communicationEmail : (profile?.email || `${fallbackUsername}@yopmail.com`)
+    const approverName = session.user.name || 'HR Administrator'
+
+    const formattedDate = new Date(entry.dateWorked).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    })
+
+    await sendEmail({
+      to: targetEmail,
+      subject: `Comp-Off Log Approved`,
+      html: `
 <div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
     <div style="background-color: #0f9d58; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL</div>
@@ -423,71 +434,76 @@ export async function approveCompOff(id: string) {
   </div>
 </div>
     `
-  })
+    })
 
-  // Create Audit Log using Prisma
-  await prisma.auditLog.create({
-    data: {
-      userId: approverId,
-      action: "COMPOFF_APPROVED",
-      entity: "CompOffWorkEntry",
-      entityId: id,
-      metadata: JSON.stringify({ approverName }),
-      createdAt: await getSystemDateTime()
-    }
-  })
+    // Create Audit Log using Prisma
+    await prisma.auditLog.create({
+      data: {
+        userId: approverId,
+        action: "COMPOFF_APPROVED",
+        entity: "CompOffWorkEntry",
+        entityId: id,
+        metadata: JSON.stringify({ approverName }),
+        createdAt: await getSystemDateTime()
+      }
+    })
 
-  // Keep ledger in sync
-  await syncUserLedger(entry.userId, entryYear)
+    // Keep ledger in sync
+    await syncUserLedger(entry.userId, entryYear)
 
-  revalidatePath("/requests")
-  return { success: true }
+    revalidatePath("/requests")
+    return { success: true }
+  } catch (err: any) {
+    console.error("approveCompOff Error:", err)
+    return { success: false, error: err.message || "Failed to approve comp-off entry." }
+  }
 }
 
 export async function rejectCompOff(id: string) {
-  const session = await getServerSession()
-  if (!session) throw new Error("Unauthorized")
+  try {
+    const session = await getServerSession()
+    if (!session) throw new Error("Unauthorized")
 
-  const approverId = session.user.id
+    const approverId = session.user.id
 
-  const entry = await prisma.compOffWorkEntry.findUnique({
-    where: { id }
-  })
+    const entry = await prisma.compOffWorkEntry.findUnique({
+      where: { id }
+    })
 
-  if (!entry) throw new Error("Comp-off entry not found")
-  if (entry.userId === approverId) {
-    throw new Error("Cannot reject your own comp-off entry.")
-  }
-  if (entry.status !== "PENDING") {
-    throw new Error(`Cannot reject: entry is already ${entry.status.toLowerCase()}`)
-  }
-
-  const updatedEntry = await prisma.compOffWorkEntry.update({
-    where: { id },
-    data: {
-      status: "REJECTED",
-      approvedById: approverId,
-      approvedAt: await getSystemDateTime()
-    },
-    include: {
-      user: true
+    if (!entry) throw new Error("Comp-off entry not found")
+    if (entry.userId === approverId) {
+      throw new Error("Cannot reject your own comp-off entry.")
     }
-  })
+    if (entry.status !== "PENDING") {
+      throw new Error(`Cannot reject: entry is already ${entry.status.toLowerCase()}`)
+    }
 
-  // Fetch applicant profile
-  const profile = updatedEntry.user
-  const fallbackUsername = profile?.email ? profile.email.split('@')[0] : (profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
-  const targetEmail = (profile?.communicationEmail && profile.communicationEmail !== 'noreply@yopmail.com') ? profile.communicationEmail : (profile?.email || `${fallbackUsername}@yopmail.com`)
-  const approverName = session.user.name || 'HR Administrator'
+    const updatedEntry = await prisma.compOffWorkEntry.update({
+      where: { id },
+      data: {
+        status: "REJECTED",
+        approvedById: approverId,
+        approvedAt: await getSystemDateTime()
+      },
+      include: {
+        user: true
+      }
+    })
 
-  const formattedDate = new Date(entry.dateWorked).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric'
-  })
+    // Fetch applicant profile
+    const profile = updatedEntry.user
+    const fallbackUsername = profile?.email ? profile.email.split('@')[0] : (profile?.name ? profile.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') : 'noreply')
+    const targetEmail = (profile?.communicationEmail && profile.communicationEmail !== 'noreply@yopmail.com') ? profile.communicationEmail : (profile?.email || `${fallbackUsername}@yopmail.com`)
+    const approverName = session.user.name || 'HR Administrator'
 
-  await sendEmail({
-    to: targetEmail,
-    subject: `Comp-Off Log Rejected`,
-    html: `
+    const formattedDate = new Date(entry.dateWorked).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    })
+
+    await sendEmail({
+      to: targetEmail,
+      subject: `Comp-Off Log Rejected`,
+      html: `
 <div style="background-color: #f0f4f8; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
     <div style="background-color: #ea4335; color: #ffffff; text-align: center; padding: 16px; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">LMS PORTAL</div>
@@ -520,20 +536,24 @@ export async function rejectCompOff(id: string) {
   </div>
 </div>
     `
-  })
+    })
 
-  // Create Audit Log using Prisma
-  await prisma.auditLog.create({
-    data: {
-      userId: approverId,
-      action: "COMPOFF_REJECTED",
-      entity: "CompOffWorkEntry",
-      entityId: id,
-      metadata: JSON.stringify({ approverName }),
-      createdAt: await getSystemDateTime()
-    }
-  })
+    // Create Audit Log using Prisma
+    await prisma.auditLog.create({
+      data: {
+        userId: approverId,
+        action: "COMPOFF_REJECTED",
+        entity: "CompOffWorkEntry",
+        entityId: id,
+        metadata: JSON.stringify({ approverName }),
+        createdAt: await getSystemDateTime()
+      }
+    })
 
-  revalidatePath("/requests")
-  return { success: true }
+    revalidatePath("/requests")
+    return { success: true }
+  } catch (err: any) {
+    console.error("rejectCompOff Error:", err)
+    return { success: false, error: err.message || "Failed to reject comp-off entry." }
+  }
 }
