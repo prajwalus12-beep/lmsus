@@ -8,40 +8,68 @@ export async function calculateMonthlyPLAccrual(
   tx?: any
 ) {
   const db = tx || prisma
-  const start = startOfMonth(new Date(year, month))
-  const end = endOfMonth(new Date(year, month))
 
-  // 1. Get total days in month
-  const allDays = eachDayOfInterval({ start, end })
+  // 1. Fetch user to check joinDate and lastWorkingDay
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { joinDate: true, lastWorkingDay: true }
+  })
+  if (!user) {
+    return { accrued: 0, reason: "User not found" }
+  }
+
+  const joinDate = new Date(user.joinDate)
+  const lastWorkingDay = user.lastWorkingDay ? new Date(user.lastWorkingDay) : null
+
+  // Target month boundaries (local time, matching startOfMonth/endOfMonth)
+  const targetStart = startOfMonth(new Date(year, month))
+  const targetEnd = endOfMonth(new Date(year, month))
+
+  // If user joined after this month or left before this month, they accrue nothing
+  if (joinDate > targetEnd) {
+    return { accrued: 0, reason: "User joined after target month" }
+  }
+  if (lastWorkingDay && lastWorkingDay < targetStart) {
+    return { accrued: 0, reason: "User left before target month" }
+  }
+
+  // Active calculation boundaries based on joining/resignation date
+  const activeStart = joinDate > targetStart ? joinDate : targetStart
+  const activeEnd = lastWorkingDay && lastWorkingDay < targetEnd ? lastWorkingDay : targetEnd
+
+  // 1. Get total days in active range of month
+  const allDays = eachDayOfInterval({ start: activeStart, end: activeEnd })
   const totalDays = allDays.length
 
   // 2. Fetch system configs using Prisma
   const [
-    rateConfig,
+    rateConfigPl,
+    rateConfigPerMonth,
     baseConfig,
     thresholdConfig,
     minWorkingDaysThresholdConfig,
     includePaidLeave
   ] = await Promise.all([
     db.systemConfig.findUnique({ where: { key: 'ACCRUAL_RATE_PL' } }),
+    db.systemConfig.findUnique({ where: { key: 'PL_ACCRUAL_PER_MONTH' } }),
     db.systemConfig.findUnique({ where: { key: 'ACCRUAL_BASE_DAYS' } }),
     db.systemConfig.findUnique({ where: { key: 'MIN_WORKED_DAYS_FOR_PL' } }),
     db.systemConfig.findUnique({ where: { key: 'min_working_days_threshold' } }),
     db.systemConfig.findUnique({ where: { key: 'INCLUDE_PAID_LEAVE_IN_ACCRUAL' } })
   ])
   
-  const rate = parseFloat(rateConfig?.value || "1.5")
+  const rate = parseFloat(rateConfigPl?.value || rateConfigPerMonth?.value || "1.5")
   const baseDays = parseInt(baseConfig?.value || "20")
   const threshold = parseInt(minWorkingDaysThresholdConfig?.value || thresholdConfig?.value || "5")
 
-  // 3. Calculate Deductions
+  // 3. Calculate Deductions within active range
   const weekendsCount = allDays.filter(d => isWeekend(d)).length
   
   const holidays = await db.holiday.findMany({
     where: {
       date: {
-        gte: start,
-        lte: end
+        gte: activeStart,
+        lte: activeEnd
       }
     }
   })
@@ -53,8 +81,8 @@ export async function calculateMonthlyPLAccrual(
     where: {
       userId,
       status: 'HR_APPROVED',
-      startDate: { lte: end },
-      endDate: { gte: start }
+      startDate: { lte: activeEnd },
+      endDate: { gte: activeStart }
     }
   })
 
@@ -78,8 +106,8 @@ export async function calculateMonthlyPLAccrual(
 
     const reqStart = new Date(req.startDate)
     const reqEnd = new Date(req.endDate)
-    const overlapStart = reqStart < start ? start : reqStart
-    const overlapEnd = reqEnd > end ? end : reqEnd
+    const overlapStart = reqStart < activeStart ? activeStart : reqStart
+    const overlapEnd = reqEnd > activeEnd ? activeEnd : reqEnd
 
     const current = new Date(overlapStart)
     while (current <= overlapEnd) {
@@ -133,23 +161,34 @@ export async function calculateMonthlyCLAccrual(
   tx?: any
 ) {
   const db = tx || prisma
-  // 1. Fetch user to check joinDate
+  // 1. Fetch user to check joinDate and lastWorkingDay
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { joinDate: true }
+    select: { joinDate: true, lastWorkingDay: true }
   })
   if (!user || !user.joinDate) {
     return { accrued: 0, reason: "User or join date not found" }
   }
 
   const joinDate = new Date(user.joinDate)
-  // Define target month boundaries in UTC to avoid time zone offsets shifting the date
-  const targetStartOfMonth = new Date(Date.UTC(year, month, 1))
-  const targetEndOfMonth = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999))
+  const lastWorkingDay = user.lastWorkingDay ? new Date(user.lastWorkingDay) : null
+
+  // Use local date calculations to avoid timezone shifts
+  const joinYear = joinDate.getFullYear()
+  const joinMonth = joinDate.getMonth()
+  const joiningDay = joinDate.getDate()
+
+  const targetStartOfMonth = new Date(year, month, 1)
+  const targetEndOfMonth = new Date(year, month + 1, 0, 23, 59, 59, 999)
 
   // If target month is before joining month, accrual is 0
   if (targetEndOfMonth < joinDate) {
     return { accrued: 0, reason: "Target month is before joining date" }
+  }
+
+  // If target month is after last working day, accrual is 0
+  if (lastWorkingDay && targetStartOfMonth > lastWorkingDay) {
+    return { accrued: 0, reason: "Target month is after resignation date" }
   }
 
   // 2. Fetch Annual CL Entitlement Config
@@ -160,38 +199,61 @@ export async function calculateMonthlyCLAccrual(
 
   const monthlyEntitlement = annualEntitlement / 12
 
-  // 3. Proration for the month of joining
+  // 3. Proration for the month of joining and/or resignation
   let accrued = monthlyEntitlement
   let isProrated = false
   let daysServed = 0
-  let daysInMonth = 0
+  let daysInMonth = new Date(year, month + 1, 0).getDate()
 
-  const joinYear = joinDate.getUTCFullYear()
-  const joinMonth = joinDate.getUTCMonth()
+  const isJoinMonth = (joinYear === year && joinMonth === month)
+  const leaveYear = lastWorkingDay ? lastWorkingDay.getFullYear() : null
+  const leaveMonth = lastWorkingDay ? lastWorkingDay.getMonth() : null
+  const isLeaveMonth = (lastWorkingDay && leaveYear === year && leaveMonth === month)
 
-  if (joinYear === year && joinMonth === month) {
+  if (isJoinMonth || isLeaveMonth) {
     isProrated = true
-    daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-    const joiningDay = joinDate.getUTCDate()
-    daysServed = daysInMonth - joiningDay + 1
+    const startDay = isJoinMonth ? joiningDay : 1
+    const endDay = isLeaveMonth ? lastWorkingDay.getDate() : daysInMonth
+    daysServed = Math.max(0, endDay - startDay + 1)
     const proratedRatio = daysServed / daysInMonth
     accrued = proratedRatio * monthlyEntitlement
   }
 
-  // 4. Max Annual Accrual check
-  // Sum up all MONTHLY_ACCRUAL adjustments for CL in this target year
-  const clAccruals = await db.leaveBalanceAdjustment.aggregate({
+  // 4. Max Annual Accrual check (including opening balance and adjustments)
+  const leaveBalance = await db.leaveBalance.findUnique({
+    where: {
+      userId_year: {
+        userId,
+        year
+      }
+    },
+    select: { openingCl: true }
+  })
+  const openingCl = leaveBalance?.openingCl || 0
+
+  const clAdjustments = await db.leaveBalanceAdjustment.aggregate({
     _sum: { amount: true },
     where: {
       userId,
       leaveType: 'CL',
-      adjustmentType: 'MONTHLY_ACCRUAL',
       effectiveYear: year
     }
   })
-  const accruedSoFar = clAccruals._sum.amount || 0
-  const remainingLimit = Math.max(0, annualEntitlement - accruedSoFar)
+  const accruedSoFar = clAdjustments._sum.amount || 0
+  const remainingLimit = Math.max(0, annualEntitlement - openingCl - accruedSoFar)
   
+  if (remainingLimit <= 0) {
+    return {
+      accrued: 0,
+      reason: `Annual CL entitlement cap (${annualEntitlement}) reached`,
+      isProrated,
+      daysServed,
+      daysInMonth,
+      annualEntitlement,
+      monthlyEntitlement
+    }
+  }
+
   if (accrued > remainingLimit) {
     accrued = remainingLimit
   }

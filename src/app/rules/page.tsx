@@ -44,6 +44,7 @@ export default async function LeaveRulesPage() {
   const probationMonths = configMap['PROBATION_PERIOD_MONTHS'] || "6";
   const maxNegative = configMap['MAX_NEGATIVE_LEAVE'] || "-5";
   const isSandwichEnabled = configMap['weekend_sandwich_rule'] === 'true';
+  const clAnnualEntitlement = configMap['CL_ANNUAL_ENTITLEMENT'] || "12";
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto p-4 md:p-8">
@@ -187,41 +188,78 @@ export default async function LeaveRulesPage() {
         {/* Accrual Engine and Working Days Rules */}
         <div className="grid gap-6 md:grid-cols-2">
           {/* Section: Accruals */}
-          <Card className="border-slate-200/80 bg-white relative overflow-hidden shadow-sm">
-            <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-600" />
-            <CardHeader className="pl-7">
-              <div className="flex items-center gap-2">
-                <RefreshCw className="w-5 h-5 text-indigo-600 animate-spin-slow" />
-                <CardTitle className="text-lg font-bold text-slate-900">PL Monthly Accrual Rules</CardTitle>
-              </div>
-              <CardDescription className="text-xs text-slate-500">How Privilege Leave is credited on a monthly basis.</CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm text-slate-600 space-y-4 pl-7">
-              <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl space-y-3">
-                <div className="flex items-start gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">1</div>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    <strong>Monthly Credit:</strong> PL accrues at a rate of <strong>{accrualRate} days</strong> per standard <strong>{accrualBase} base working days</strong>.
-                  </p>
+          <div className="space-y-6">
+            {/* PL Monthly Accrual Rules */}
+            <Card className="border-slate-200/80 bg-white relative overflow-hidden shadow-sm">
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-600" />
+              <CardHeader className="pl-7">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-indigo-600 animate-spin-slow" />
+                  <CardTitle className="text-lg font-bold text-slate-900">PL Monthly Accrual Rules</CardTitle>
                 </div>
-                <div className="flex items-start gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">2</div>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    <strong>Minimum Working Days:</strong> You must have at least <strong>{minWorkedDays} worked days</strong> in the calendar month to accrue any PL. If working days fall below {minWorkedDays}, accrual for that month is <strong>0</strong>.
-                  </p>
+                <CardDescription className="text-xs text-slate-500">How Privilege Leave is credited on a monthly basis.</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-slate-600 space-y-4 pl-7">
+                <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">1</div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <strong>Monthly Credit:</strong> PL accrues at a rate of <strong>{accrualRate} days</strong> per standard <strong>{accrualBase} base working days</strong>.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">2</div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <strong>Minimum Working Days:</strong> You must have at least <strong>{minWorkedDays} worked days</strong> in the calendar month to accrue any PL. If working days fall below {minWorkedDays}, accrual for that month is <strong>0</strong>.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">3</div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <strong>Formula:</strong> <code>Accrued PL = (Worked Days / {accrualBase}) * {accrualRate}</code> (up to maximum rate cap, rounded to 2 decimal places).
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-start gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">3</div>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    <strong>Formula:</strong> <code>Accrued PL = (Worked Days / {accrualBase}) * {accrualRate}</code> (up to maximum rate cap, rounded to 2 decimal places).
-                  </p>
+                <p className="text-[11px] text-slate-400 italic">
+                  * Worked days = Total Days in Month - Weekends - Holidays - Approved Leaves.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* CL Monthly Accrual Rules */}
+            <Card className="border-slate-200/80 bg-white relative overflow-hidden shadow-sm">
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-teal-500" />
+              <CardHeader className="pl-7">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-teal-500 animate-spin-slow" />
+                  <CardTitle className="text-lg font-bold text-slate-900">CL Monthly Accrual Rules</CardTitle>
                 </div>
-              </div>
-              <p className="text-[11px] text-slate-400 italic">
-                * Worked days = Total Days in Month - Weekends - Holidays - Approved Leaves.
-              </p>
-            </CardContent>
-          </Card>
+                <CardDescription className="text-xs text-slate-500">How Casual Leave is credited on a monthly basis.</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-slate-600 space-y-4 pl-7">
+                <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">1</div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <strong>Monthly Credit:</strong> CL accrues at a rate of <strong>{(parseFloat(clAnnualEntitlement) / 12).toFixed(2)} days</strong> per month (1/12th of annual entitlement).
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">2</div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <strong>Proration:</strong> Accrual is prorated for the month of joining and month of resignation based on active calendar days served in those months.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 shrink-0">3</div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <strong>Annual Cap:</strong> CL accruals are hard-capped at the configured annual entitlement of <strong>{clAnnualEntitlement} days</strong>. This cap includes opening balances: <code>openingCL + totalCLAccruedForYear</code>.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Section: System Validations */}
           <Card className="border-slate-200/80 bg-white relative overflow-hidden shadow-sm">
