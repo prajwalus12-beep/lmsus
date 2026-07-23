@@ -45,44 +45,28 @@ export async function POST(req: NextRequest) {
   const results: { user: string; monthsAccrued: string[]; totalAccrued: number }[] = []
 
   for (const user of users) {
-    // 1. Check the last monthly accrual date for this user
-    const lastAccrual = await prisma.leaveBalanceAdjustment.findFirst({
-      where: {
-        userId: user.id,
-        adjustmentType: 'MONTHLY_ACCRUAL'
-      },
-      orderBy: { createdAt: 'desc' }
-    })
-
-    // Determine the starting point for this user's accruals
+    // Determine the starting point for this user's accruals based on joining date
     let startYear: number
     let startMonth: number
 
-    if (lastAccrual) {
-      const lastDate = new Date(lastAccrual.createdAt)
-      startMonth = lastDate.getUTCMonth() // 0-11 (next month to check, since createdAt is stored as 1st of next month)
-      startYear = lastDate.getUTCFullYear()
-    } else {
-      // If no last accrual, start from joining date or January of target year (whichever is later)
-      if (user.joinDate) {
-        const joinDate = new Date(user.joinDate)
-        const joinYear = joinDate.getUTCFullYear()
-        const joinMonth = joinDate.getUTCMonth()
+    if (user.joinDate) {
+      const joinDate = new Date(user.joinDate)
+      const joinYear = joinDate.getFullYear()
+      const joinMonth = joinDate.getMonth()
 
-        if (joinYear < year) {
-          startYear = year
-          startMonth = 0 // January of target year
-        } else if (joinYear === year) {
-          startYear = year
-          startMonth = joinMonth // Joining month
-        } else {
-          // Joined after target year
-          continue
-        }
-      } else {
+      if (joinYear < year) {
         startYear = year
-        startMonth = 0
+        startMonth = 0 // January of target year
+      } else if (joinYear === year) {
+        startYear = year
+        startMonth = joinMonth // Joining month
+      } else {
+        // Joined after target year
+        continue
       }
+    } else {
+      startYear = year
+      startMonth = 0
     }
 
     const targetTimeVal = year * 12 + month
