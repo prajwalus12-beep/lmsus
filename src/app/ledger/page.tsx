@@ -49,9 +49,6 @@ export default async function LedgerPage() {
     targetUserId = allUsers[0].id
   }
 
-  // Pre-sync ledger to ensure it is dynamically calculated up-to-date
-  await syncUserLedger(targetUserId, year)
-
   const [
     clBalanceSetting,
     profile,
